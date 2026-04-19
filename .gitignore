@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.aac
+!public/videos/.gitkeep
+!public/audio/.gitkeep
