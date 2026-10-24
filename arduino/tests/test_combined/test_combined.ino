@@ -37,21 +37,35 @@ const float REL_MIN[NJ] = {-90, -15, -90};
 const float REL_MAX[NJ] = { 90,  50,  45};
 
 // ---------------- dimensions (mm) ----------------
-const float SHOULDER_HEIGHT_MM = 60, LINK1_MM = 225, LINK2_MM = 160, HEAD_MM = 75;
-// Button pusher bar, perpendicular to the second arm, pointing down at 0
-const float PUSHER_LEN_MM = 50, PUSHER_MOUNT_MM = 235;
+const float SHOULDER_HEIGHT_MM = 60, LINK1_MM = 225, LINK2_MM = 160;
+const char *JOINT_NAMES[NJ] = {"base", "main", "2nd"};
+
+// ---------------- sensor board (offsets from the end of the second arm) ----------------
+// along = out along the arm, down = square to the arm, side + = your right facing the machine
+struct Tool {
+  const char *name;
+  float along, down, side;
+  bool pressDown;   // true: approach along the "down" direction (pusher)
+};
+const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre of the board
+const Tool TOOL_RGB    = {"colour",      0, 83,  45, false};  // tip of the right hand stick
+const Tool TOOL_SOUND  = {"sound",       0, 42, -45, false};  // left hand side
+const Tool TOOL_PUSHER = {"pusher",     20, 50,   0, true};   // 50 mm bar, fixed 20 mm out
+// Pusher note: fixed right at the end of the arm (along 0), Point E needs the
+// second arm at +49, past its +45 limit. 20 mm further out it needs +38.
+
 
 // ---------------- stations ----------------
-struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; bool pusher; };
-Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}};
-Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}};
-Station ST_C       = {"C",       55, 200,  70,  30, {0, 0, 0}};
-Station ST_D       = {"D",      100, 275, 250,  60, {0, 0, 0}};
-Station ST_IND_LO  = {"ind low", 110, 275, 150,  60, {0, 0, 0}};
-Station ST_IND_MID = {"ind mid", 110, 275, 250,  60, {0, 0, 0}};
-Station ST_IND_HI  = {"ind high",110, 275, 350,  60, {0, 0, 0}};
-Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, true};
-Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, true};
+struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; const Tool *tool; };
+Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};
+Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
+Station ST_C       = {"C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};
+Station ST_D       = {"D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};
+Station ST_IND_LO  = {"ind low", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
+Station ST_IND_MID = {"ind mid", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
+Station ST_IND_HI  = {"ind high",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
+Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};
+Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint8_t STEP_MS = 15;
@@ -95,87 +109,88 @@ void moveJoint(uint8_t j, float rel, uint16_t ms) {
   moveTo(p, ms);
 }
 
-// ---------------- kinematics ----------------
-void forwardKinematics(const Pose &p, float &theta, float &r, float &z) {
-  float phi = radians(p.a[J_MAIN]);
-  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);
-  float l2 = LINK2_MM + HEAD_MM;
-  theta = p.a[J_BASE] + 90;
-  r = LINK1_MM * sin(phi) + l2 * cos(psi);
-  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + l2 * sin(psi);
+// ---------------- kinematics (same as arm_controller.ino) ----------------
+// Where a tool is for a pose: theta (deg), r and z (mm) in the brief's
+// coordinates. The side offset moves it out of the arm's plane, which shows
+// up as a small change in theta and r.
+void toolPoint(const Pose &p, const Tool &t, float &theta, float &r, float &z) {
+  float phi = radians(p.a[J_MAIN]);                 // main arm from vertical
+  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);  // second arm from horizontal
+  float a = LINK2_MM + t.along;
+  float rin = LINK1_MM * sin(phi) + a * cos(psi) + t.down * sin(psi);
+  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + a * sin(psi) - t.down * cos(psi);
+  r = sqrt(rin * rin + t.side * t.side);
+  theta = p.a[J_BASE] + 90 + degrees(atan2(t.side, rin));
 }
 
-void pusherTip(const Pose &p, float &r, float &z) {
-  float phi = radians(p.a[J_MAIN]);
-  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);
-  r = LINK1_MM * sin(phi) + PUSHER_MOUNT_MM * cos(psi) + PUSHER_LEN_MM * sin(psi);
-  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + PUSHER_MOUNT_MM * sin(psi) - PUSHER_LEN_MM * cos(psi);
-}
-
-// Pusher tip `gap` mm short of the point along the bar (same as arm_controller.ino)
-bool pusherIK(const Station &s, Pose &out) {
-  float l2 = sqrt(PUSHER_MOUNT_MM * PUSHER_MOUNT_MM + PUSHER_LEN_MM * PUSHER_LEN_MM);
-  float delta = atan2(PUSHER_LEN_MM, PUSHER_MOUNT_MM);
+// Joint angles that put a tool `standoff` mm from the station point, facing
+// it. The arm end and the tool form one rigid link, so this is a two link
+// solution in the arm's plane; the base angle is corrected for the side
+// offset. The tool direction depends on the answer, so it is refined.
+bool toolIK(const Station &s, Pose &out) {
+  const Tool &t = *s.tool;
+  float a = LINK2_MM + t.along;
+  float l2 = sqrt(a * a + t.down * t.down);
+  float delta = atan2(t.down, a);
+  if (s.r <= fabs(t.side)) return false;
+  float rin = sqrt(s.r * s.r - t.side * t.side);    // distance in the arm's plane
+  float baseRel = s.theta - degrees(atan2(t.side, rin)) - 90;
   float psi = 0;
-  for (uint8_t it = 0; it < 4; it++) {
-    float tr = s.r - sin(psi) * s.standoff, tz = s.z + cos(psi) * s.standoff;
-    float dz = tz - SHOULDER_HEIGHT_MM, D = sqrt(tr * tr + dz * dz);
+  for (uint8_t it = 0; it < 6; it++) {
+    float ax = t.pressDown ? sin(psi) : cos(psi);    // direction the tool points
+    float az = t.pressDown ? -cos(psi) : sin(psi);
+    float tr = rin - ax * s.standoff;
+    float tz = s.z - az * s.standoff;
+    float dz = tz - SHOULDER_HEIGHT_MM;
+    float D = sqrt(tr * tr + dz * dz);
     if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) return false;
     float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
-    float e = atan2(dz, tr) + acos(constrain(c, -1.0, 1.0));
-    float ex = LINK1_MM * cos(e), ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
+    float e = atan2(dz, tr) + acos(constrain(c, -1.0, 1.0));   // elbow up solution
+    float ex = LINK1_MM * cos(e);
+    float ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
     psi = atan2(tz - ez, tr - ex) + delta;
-    out.a[J_BASE] = s.theta - 90 + s.trim[J_BASE];
-    out.a[J_MAIN] = 90 - degrees(e) + s.trim[J_MAIN];
-    out.a[J_ELBOW] = degrees(psi) + 90 - degrees(e) + s.trim[J_ELBOW];
+    out.a[J_BASE]  = baseRel;
+    out.a[J_MAIN]  = 90 - degrees(e);
+    out.a[J_ELBOW] = degrees(psi) + out.a[J_MAIN];
   }
   return true;
 }
 
+// Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
-  if (s.pusher) {
-    if (!pusherIK(s, out)) { Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH")); return false; }
-    for (uint8_t j = 0; j < NJ; j++)
-      if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) { Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" at a joint limit")); }
-    return true;
-  }
-  float l2 = LINK2_MM + HEAD_MM + s.standoff;
-  float dz = s.z - SHOULDER_HEIGHT_MM;
-  float D = sqrt(s.r * s.r + dz * dz);
-  if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) {
+  if (!toolIK(s, out)) {
     Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
     return false;
   }
-  float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
-  float e = atan2(dz, s.r) + acos(constrain(c, -1.0, 1.0));
-  float ex = LINK1_MM * cos(e), ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
-  float phi = 90 - degrees(e);
-  float psi = degrees(atan2(s.z - ez, s.r - ex));
-  out.a[J_BASE] = s.theta - 90 + s.trim[J_BASE];
-  out.a[J_MAIN] = phi + s.trim[J_MAIN];
-  out.a[J_ELBOW] = psi + phi + s.trim[J_ELBOW];
   for (uint8_t j = 0; j < NJ; j++) {
+    out.a[j] += s.trim[j];
     if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) {
-      Serial.print(F("[ik] ")); Serial.print(s.name); Serial.print(F(" joint ")); Serial.print(j);
-      Serial.print(F(" at limit, wanted ")); Serial.println(out.a[j]);
+      Serial.print(F("[ik] ")); Serial.print(s.name); Serial.print(F(" ")); Serial.print(JOINT_NAMES[j]);
+      Serial.print(F(" limit, wanted ")); Serial.println(out.a[j]);
+      out.a[j] = constrain(out.a[j], REL_MIN[j], REL_MAX[j]);
     }
   }
   return true;
 }
 
+void printTool(const Tool &t) {
+  float th, r, z;
+  toolPoint(cur, t, th, r, z);
+  Serial.print(F("  ")); Serial.print(t.name);
+  Serial.print(F(" (")); Serial.print(th, 0);
+  Serial.print(F(", ")); Serial.print(r, 0);
+  Serial.print(F(", ")); Serial.print(z, 0); Serial.print(')');
+}
+
+// Joint angles, then where every tool is as (theta, r, z).
 void printPosition(const char *label) {
-  float t, r, z;
-  forwardKinematics(cur, t, r, z);
   Serial.print(F("[pos] ")); Serial.print(label);
   Serial.print(F("  base ")); Serial.print(cur.a[J_BASE], 1);
   Serial.print(F("  main ")); Serial.print(cur.a[J_MAIN], 1);
-  Serial.print(F("  2nd ")); Serial.print(cur.a[J_ELBOW], 1);
-  Serial.print(F("  | sensor at theta ")); Serial.print(t, 0);
-  Serial.print(F(" r ")); Serial.print(r, 0);
-  Serial.print(F(" z ")); Serial.print(z, 0);
-  pusherTip(cur, r, z);
-  Serial.print(F("  pusher tip r ")); Serial.print(r, 0);
-  Serial.print(F(" z ")); Serial.println(z, 0);
+  Serial.print(F("  2nd ")); Serial.println(cur.a[J_ELBOW], 1);
+  Serial.print(F("     "));
+  printTool(TOOL_US); printTool(TOOL_RGB); printTool(TOOL_SOUND); printTool(TOOL_PUSHER);
+  Serial.println();
 }
 
 void goToPose(const Pose &p, const char *label) {

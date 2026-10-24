@@ -27,8 +27,9 @@
  * POSITIONING
  *   Joint angles are calculated on board from the station coordinates in the
  *   brief and the arm dimensions below (two link inverse kinematics). The
- *   sensor head points along the second arm, and each station has a standoff
- *   (gap between the sensor face and the target). Fine tune a station with
+ *   sensor board sits at the end of the second arm; each sensor's own offset
+ *   on the board (see SENSOR BOARD) is used, so the right sensor is aimed at
+ *   each station with a standoff (gap between the sensor and the target). Fine tune a station with
  *   its trim values instead of changing the maths.
  *
  * QUICK EDITS ON THE DAY
@@ -101,36 +102,56 @@ const char *JOINT_NAMES[NJ] = {"base", "main", "2nd"};
 // ======================================================================
 const float SHOULDER_HEIGHT_MM = 60;    // base plate to main arm pivot. Measure this.
 const float LINK1_MM           = 225;   // main arm, pivot to pivot
-const float LINK2_MM           = 160;   // second arm, pivot to wrist
-const float HEAD_MM            = 75;    // wrist to sensor face
+const float LINK2_MM           = 160;   // second arm, pivot to the sensor board
 
-// Button pusher: a bar fixed to the second arm, perpendicular to it, pointing
-// straight down when the second arm is at 0 (level).
-const float PUSHER_LEN_MM      = 50;    // length of the bar
-const float PUSHER_MOUNT_MM    = 235;   // from the second arm pivot to where the bar is fixed.
-                                        // 235 = end of the sensor head. At 160 (end of the
-                                        // bare second arm) Point E needs the second arm past +45.
+// ======================================================================
+// SENSOR BOARD (mm, measured from where the second arm ends)
+// ======================================================================
+//   along = further out along the second arm
+//   down  = square to the arm, towards the ground when the second arm is level
+//   side  = sideways: + is to YOUR RIGHT when you stand in front of the
+//           machine facing it (that is the arm's own left)
+// Every sensor faces outward along the second arm, except the pusher, which
+// presses along its own length (straight down when the second arm is level).
+struct Tool {
+  const char *name;
+  float along, down, side;
+  bool pressDown;   // true: approach along the "down" direction (pusher)
+};
+const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre of the board
+const Tool TOOL_RGB    = {"colour",      0, 83,  45, false};  // tip of the right hand stick
+const Tool TOOL_SOUND  = {"sound",       0, 42, -45, false};  // left hand side
+const Tool TOOL_PUSHER = {"pusher",     20, 50,   0, true};   // 50 mm bar, fixed 20 mm out
+// Pusher note: fixed right at the end of the arm (along 0), Point E needs the
+// second arm at +49, past its +45 limit. 20 mm further out it needs +38.
+
+// Sensor ranges used for the standoffs below
+//   HC-SR04 ultrasonic: 20 mm to 4 m, about 3 mm resolution, 15 deg cone.
+//                       Below about 20 mm it reads nothing.
+//   TCS34725 colour:    reads best 5 to 20 mm from the paper. Further away
+//                       room light swamps the colour; closer it shadows itself.
+//   Sound module (KY-037/038): sensitivity set by its screw pot. A tap a few
+//                       cm away gives a clear peak; across the room barely registers.
 
 // ======================================================================
 // STATIONS (theta deg, R mm, Z mm from the brief) and standoffs
 // ======================================================================
-// standoff = gap from the sensor face to the target along the pointing line.
+// standoff = gap from the tool to the target along its pointing line
+//            (negative = pushed in past contact, used for the button).
 // trim = extra degrees added to the calculated base / main / 2nd angles.
 struct Station {
   const char *name;
   float theta, r, z, standoff;
   float trim[NJ];
-  bool pusher;      // true: aim the pusher tip, false: aim the sensor face
+  const Tool *tool;
 };
 
-Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}};  // ultrasonic 10 cm from plate
-Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}};
-Station ST_C       = {"C",       55, 200,  70,  30, {0, 0, 0}};  // colour sensor 3 cm from paper
-Station ST_D       = {"D",      100, 275, 250,  60, {0, 0, 0}};  // listen 6 cm from the source
-// Point E uses the pusher. standoff = gap from the pusher tip to the button
-// along the bar (negative = pushed in past contact).
-Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, true};  // 15 mm off the button
-Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, true};  // 8 mm past contact = pressed
+Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};      // 10 cm from the plate
+Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
+Station ST_C       = {"C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
+Station ST_D       = {"D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
+Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};  // 15 mm off the button
+Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
 // IND_Z_HIGH (loud) at theta 110, R 275.
@@ -248,63 +269,46 @@ void moveJoint(uint8_t j, float rel, uint16_t ms) {
 // ======================================================================
 // KINEMATICS
 // ======================================================================
-// Where the sensor face is for a pose: theta (deg), r and z (mm).
-void forwardKinematics(const Pose &p, float &theta, float &r, float &z) {
+// Where a tool is for a pose: theta (deg), r and z (mm) in the brief's
+// coordinates. The side offset moves it out of the arm's plane, which shows
+// up as a small change in theta and r.
+void toolPoint(const Pose &p, const Tool &t, float &theta, float &r, float &z) {
   float phi = radians(p.a[J_MAIN]);                 // main arm from vertical
   float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);  // second arm from horizontal
-  float l2 = LINK2_MM + HEAD_MM;
-  theta = p.a[J_BASE] + 90;
-  r = LINK1_MM * sin(phi) + l2 * cos(psi);
-  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + l2 * sin(psi);
+  float a = LINK2_MM + t.along;
+  float rin = LINK1_MM * sin(phi) + a * cos(psi) + t.down * sin(psi);
+  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + a * sin(psi) - t.down * cos(psi);
+  r = sqrt(rin * rin + t.side * t.side);
+  theta = p.a[J_BASE] + 90 + degrees(atan2(t.side, rin));
 }
 
-// Joint angles that put the sensor face `standoff` mm from the point
-// (theta, r, z), pointing straight at it. Returns false if out of reach.
-bool inverseKinematics(float theta, float r, float z, float standoff, Pose &out) {
-  float l2 = LINK2_MM + HEAD_MM + standoff;
-  float dz = z - SHOULDER_HEIGHT_MM;
-  float D = sqrt(r * r + dz * dz);
-  if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) return false;
-  float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
-  float e = atan2(dz, r) + acos(constrain(c, -1.0, 1.0));   // elbow up solution
-  float ex = LINK1_MM * cos(e);
-  float ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
-  float phi = 90 - degrees(e);
-  float psi = degrees(atan2(z - ez, r - ex));
-  out.a[J_BASE]  = theta - 90;
-  out.a[J_MAIN]  = phi;
-  out.a[J_ELBOW] = psi + phi;
-  return true;
-}
-
-// Where the pusher tip is for a pose: r and z (mm).
-void pusherTip(const Pose &p, float &r, float &z) {
-  float phi = radians(p.a[J_MAIN]);
-  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);
-  r = LINK1_MM * sin(phi) + PUSHER_MOUNT_MM * cos(psi) + PUSHER_LEN_MM * sin(psi);
-  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + PUSHER_MOUNT_MM * sin(psi) - PUSHER_LEN_MM * cos(psi);
-}
-
-// Joint angles that put the pusher tip `gap` mm short of the point
-// (theta, r, z), measured along the bar. The mount point and the bar form one
-// rigid link, so this is the same two link solution as the sensor. The bar's
-// direction depends on the answer, so it is refined a few times.
-bool pusherIK(float theta, float r, float z, float gap, Pose &out) {
-  float l2 = sqrt(PUSHER_MOUNT_MM * PUSHER_MOUNT_MM + PUSHER_LEN_MM * PUSHER_LEN_MM);
-  float delta = atan2(PUSHER_LEN_MM, PUSHER_MOUNT_MM);
+// Joint angles that put a tool `standoff` mm from the station point, facing
+// it. The arm end and the tool form one rigid link, so this is a two link
+// solution in the arm's plane; the base angle is corrected for the side
+// offset. The tool direction depends on the answer, so it is refined.
+bool toolIK(const Station &s, Pose &out) {
+  const Tool &t = *s.tool;
+  float a = LINK2_MM + t.along;
+  float l2 = sqrt(a * a + t.down * t.down);
+  float delta = atan2(t.down, a);
+  if (s.r <= fabs(t.side)) return false;
+  float rin = sqrt(s.r * s.r - t.side * t.side);    // distance in the arm's plane
+  float baseRel = s.theta - degrees(atan2(t.side, rin)) - 90;
   float psi = 0;
-  for (uint8_t it = 0; it < 4; it++) {
-    float tr = r - sin(psi) * gap;   // bar points along (sin psi, -cos psi)
-    float tz = z + cos(psi) * gap;
+  for (uint8_t it = 0; it < 6; it++) {
+    float ax = t.pressDown ? sin(psi) : cos(psi);    // direction the tool points
+    float az = t.pressDown ? -cos(psi) : sin(psi);
+    float tr = rin - ax * s.standoff;
+    float tz = s.z - az * s.standoff;
     float dz = tz - SHOULDER_HEIGHT_MM;
     float D = sqrt(tr * tr + dz * dz);
     if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) return false;
     float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
-    float e = atan2(dz, tr) + acos(constrain(c, -1.0, 1.0));
+    float e = atan2(dz, tr) + acos(constrain(c, -1.0, 1.0));   // elbow up solution
     float ex = LINK1_MM * cos(e);
     float ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
     psi = atan2(tz - ez, tr - ex) + delta;
-    out.a[J_BASE]  = theta - 90;
+    out.a[J_BASE]  = baseRel;
     out.a[J_MAIN]  = 90 - degrees(e);
     out.a[J_ELBOW] = degrees(psi) + out.a[J_MAIN];
   }
@@ -313,9 +317,7 @@ bool pusherIK(float theta, float r, float z, float gap, Pose &out) {
 
 // Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
-  bool ok = s.pusher ? pusherIK(s.theta, s.r, s.z, s.standoff, out)
-                     : inverseKinematics(s.theta, s.r, s.z, s.standoff, out);
-  if (!ok) {
+  if (!toolIK(s, out)) {
     Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
     return false;
   }
@@ -330,19 +332,24 @@ bool stationPose(const Station &s, Pose &out) {
   return true;
 }
 
+void printTool(const Tool &t) {
+  float th, r, z;
+  toolPoint(cur, t, th, r, z);
+  Serial.print(F("  ")); Serial.print(t.name);
+  Serial.print(F(" (")); Serial.print(th, 0);
+  Serial.print(F(", ")); Serial.print(r, 0);
+  Serial.print(F(", ")); Serial.print(z, 0); Serial.print(')');
+}
+
+// Joint angles, then where every tool is as (theta, r, z).
 void printPosition(const char *label) {
-  float t, r, z;
-  forwardKinematics(cur, t, r, z);
   Serial.print(F("[pos] ")); Serial.print(label);
   Serial.print(F("  base ")); Serial.print(cur.a[J_BASE], 1);
   Serial.print(F("  main ")); Serial.print(cur.a[J_MAIN], 1);
-  Serial.print(F("  2nd ")); Serial.print(cur.a[J_ELBOW], 1);
-  Serial.print(F("  | sensor at theta ")); Serial.print(t, 0);
-  Serial.print(F(" r ")); Serial.print(r, 0);
-  Serial.print(F(" z ")); Serial.print(z, 0);
-  pusherTip(cur, r, z);
-  Serial.print(F("  pusher tip r ")); Serial.print(r, 0);
-  Serial.print(F(" z ")); Serial.println(z, 0);
+  Serial.print(F("  2nd ")); Serial.println(cur.a[J_ELBOW], 1);
+  Serial.print(F("     "));
+  printTool(TOOL_US); printTool(TOOL_RGB); printTool(TOOL_SOUND); printTool(TOOL_PUSHER);
+  Serial.println();
 }
 
 // Lift, swing the base, then settle onto the pose.
@@ -668,7 +675,7 @@ void task3() {
   Serial.print(F(" -> level ")); Serial.print(resultLevel); Serial.println('%');
 
   float zPoint = IND_Z_LOW + f * (IND_Z_HIGH - IND_Z_LOW);
-  Station ind = {"indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {0, 0, 0}};
+  Station ind = {"indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {0, 0, 0}, &TOOL_US};
   Pose p;
   if (stationPose(ind, p)) {
     moveTo(p, MOVE_MS);   // indicator is next to D, no travel lift needed

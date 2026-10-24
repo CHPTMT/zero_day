@@ -18,7 +18,7 @@ Each sketch sits in a folder with the same name, which the Arduino IDE requires.
 
 ## Arm
 
-Main arm 225 mm, second arm 160 mm, sensor face 75 mm beyond the wrist, main arm pivot 60 mm above the base plate. Joint angles are relative, 0 at the zero pose:
+Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 60 mm above the base plate. On the board, measured from the end of the second arm: ultrasonic at the centre; colour sensor 83 mm down and 45 mm to the right (facing the machine from the front); sound sensor 42 mm down and 45 mm to the left; 50 mm button pusher fixed 20 mm further out, pointing down. Joint angles are relative, 0 at the zero pose:
 
 | Joint | Zero | Range |
 |---|---|---|
@@ -26,7 +26,7 @@ Main arm 225 mm, second arm 160 mm, sensor face 75 mm beyond the wrist, main arm
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
 | Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
 
-The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, so the sensor head points straight at each target with a set standoff.
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A and B, colour sensor 15 mm from the paper at C, sound sensor 40 mm from D, pusher 15 mm off the button at E before pressing 8 mm in.
 
 ## Stations (theta deg, R mm, Z mm)
 
