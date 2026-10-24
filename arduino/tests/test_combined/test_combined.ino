@@ -69,7 +69,9 @@ Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint8_t STEP_MS = 15;
-const float GESTURE_DEG = 12;
+const float GESTURE_DEG = 6;            // same as arm_controller.ino
+const uint8_t GESTURE_REPEATS = 2;
+const uint16_t GESTURE_STEP_MS = 900;
 
 Servo sBase, sLeft, sRight, sElbow;
 struct Pose { float a[NJ]; };
@@ -274,11 +276,11 @@ void printSound() {
 void nod(uint8_t j, const __FlashStringHelper *name) {
   Serial.print(F("[gesture] ")); Serial.println(name);
   float c = cur.a[j];
-  for (uint8_t i = 0; i < 3; i++) {
-    moveJoint(j, c + GESTURE_DEG, 400);
-    moveJoint(j, c - GESTURE_DEG, 400);
+  for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
+    moveJoint(j, c + GESTURE_DEG, GESTURE_STEP_MS);
+    moveJoint(j, c - GESTURE_DEG, GESTURE_STEP_MS);
   }
-  moveJoint(j, c, 400);
+  moveJoint(j, c, GESTURE_STEP_MS);
 }
 
 void box() {
@@ -289,12 +291,12 @@ void box() {
     Pose p = cur;
     p.a[J_BASE] = cb + k[i][0] * GESTURE_DEG;
     p.a[J_ELBOW] = ce + k[i][1] * GESTURE_DEG;
-    moveTo(p, 800);
+    moveTo(p, GESTURE_STEP_MS * 2);
   }
   Pose back = cur;
   back.a[J_BASE] = cb;
   back.a[J_ELBOW] = ce;
-  moveTo(back, 800);
+  moveTo(back, GESTURE_STEP_MS * 2);
 }
 
 void runAll() {

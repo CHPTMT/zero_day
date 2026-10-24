@@ -327,7 +327,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
   };
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 300, GEST = 12;
+  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 300, GEST = 6, GEST_MS = 900, GEST_REPS = 2;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -578,17 +578,17 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   async function nod(j, name, id) {
     log('[gesture] ' + name);
     var c = cur[j];
-    for (var i = 0; i < 3; i++) {
-      var a = cur.slice(); a[j] = c + GEST; await moveTo(a, 400, id);
-      a = cur.slice(); a[j] = c - GEST; await moveTo(a, 400, id);
+    for (var i = 0; i < GEST_REPS; i++) {
+      var a = cur.slice(); a[j] = c + GEST; await moveTo(a, GEST_MS, id);
+      a = cur.slice(); a[j] = c - GEST; await moveTo(a, GEST_MS, id);
     }
-    var b = cur.slice(); b[j] = c; await moveTo(b, 400, id);
+    var b = cur.slice(); b[j] = c; await moveTo(b, GEST_MS, id);
   }
   async function box(id) {
     log('[gesture] BOX');
     var cb = cur[0], ce = cur[2], k = [[-1, 1], [1, 1], [1, -1], [-1, -1], [-1, 1]];
-    for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cur[1], ce + k[i][1] * GEST], 800, id);
-    await moveTo([cb, cur[1], ce], 800, id);
+    for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cur[1], ce + k[i][1] * GEST], GEST_MS * 2, id);
+    await moveTo([cb, cur[1], ce], GEST_MS * 2, id);
   }
 
   /* ============ simulated sensors ============ */

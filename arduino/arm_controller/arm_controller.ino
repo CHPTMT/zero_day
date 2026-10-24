@@ -172,9 +172,11 @@ const bool     USE_TRAVEL   = true;          // lift before turning the base
 const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
 const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
 
-const float    GESTURE_DEG     = 12;
-const uint8_t  GESTURE_REPEATS = 3;
-const uint16_t GESTURE_STEP_MS = 400;
+// Gestures are kept small and slow so they read clearly and do not shake
+// the arm or knock it off its taught positions.
+const float    GESTURE_DEG     = 6;     // swing each way from the station pose
+const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
+const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
 
 // ======================================================================
 // SENSOR THRESHOLDS
