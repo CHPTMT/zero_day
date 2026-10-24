@@ -1,0 +1,8 @@
+item,part,qty,supplier,part_number,unit_cost,notes
+1,Controller board,1,,,,
+2,Stepper motor,3,,,,placeholder: joints 1 to 3
+3,Stepper driver,3,,,,
+4,Servo motor,3,,,,placeholder: wrist pitch and roll plus gripper
+5,Power supply,1,,,,
+6,E-stop switch (normally closed),1,,,,
+7,Limit switches,0,,,,add once homing method is chosen

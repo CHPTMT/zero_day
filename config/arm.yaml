@@ -1,0 +1,53 @@
+# Robotic arm configuration. Single source of truth for geometry, limits and drives.
+#
+# PLACEHOLDER VALUES. Every number below is a generic starting point so the
+# software runs and the tests pass. Replace them with the real specs.
+# Lengths in metres, angles in degrees, speeds in deg/s, accelerations in deg/s^2.
+
+name: zero_day
+units:
+  length: m
+  angle: deg
+
+# Standard Denavit-Hartenberg parameters, one entry per joint, base to tip.
+# a: link length, alpha: link twist (deg), d: link offset, theta_offset: joint zero offset (deg)
+joints:
+  - name: base_yaw
+    dh: {a: 0.0,   alpha: 90.0, d: 0.10, theta_offset: 0.0}
+    limits: {min: -170.0, max: 170.0, max_velocity: 60.0, max_acceleration: 120.0}
+    drive: {type: stepper, steps_per_rev: 200, microsteps: 16, gear_ratio: 5.0, invert: false}
+    home: 0.0
+  - name: shoulder_pitch
+    dh: {a: 0.25,  alpha: 0.0,  d: 0.0,  theta_offset: 90.0}
+    limits: {min: -90.0, max: 90.0, max_velocity: 45.0, max_acceleration: 90.0}
+    drive: {type: stepper, steps_per_rev: 200, microsteps: 16, gear_ratio: 10.0, invert: false}
+    home: 0.0
+  - name: elbow_pitch
+    dh: {a: 0.20,  alpha: 0.0,  d: 0.0,  theta_offset: 0.0}
+    limits: {min: -135.0, max: 135.0, max_velocity: 60.0, max_acceleration: 120.0}
+    drive: {type: stepper, steps_per_rev: 200, microsteps: 16, gear_ratio: 8.0, invert: false}
+    home: 0.0
+  - name: wrist_pitch
+    dh: {a: 0.0,   alpha: 90.0, d: 0.0,  theta_offset: 90.0}
+    limits: {min: -120.0, max: 120.0, max_velocity: 90.0, max_acceleration: 180.0}
+    drive: {type: servo, pulse_min_us: 500, pulse_max_us: 2500, range_deg: 270.0, invert: false}
+    home: 0.0
+  - name: wrist_roll
+    dh: {a: 0.0,   alpha: -90.0, d: 0.12, theta_offset: 0.0}
+    limits: {min: -180.0, max: 180.0, max_velocity: 120.0, max_acceleration: 240.0}
+    drive: {type: servo, pulse_min_us: 500, pulse_max_us: 2500, range_deg: 270.0, invert: false}
+    home: 0.0
+
+gripper:
+  type: servo
+  open_deg: 0.0
+  closed_deg: 90.0
+  max_payload_kg: 0.5
+
+controller:
+  board: arduino_mega2560
+  serial_baud: 115200
+  control_rate_hz: 100
+
+# Pose of the tool point relative to the last DH frame.
+tool_offset: {x: 0.0, y: 0.0, z: 0.05}

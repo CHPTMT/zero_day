@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# CAD backups and lock files
+*.bak
+*.FCBak
+~$*
+hardware/cad/**/*-backups/
+
+# OS
+.DS_Store
+Thumbs.db
