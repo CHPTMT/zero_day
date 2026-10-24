@@ -1,32 +1,21 @@
-name: CI
+name: Compile sketches
 
 on:
   push:
   pull_request:
 
 jobs:
-  software:
+  uno:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: software
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: arduino/compile-sketches@v1
         with:
-          python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - run: pytest -q
-
-  firmware:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        env: [mega, esp32]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install platformio
-      - run: pio run -d firmware -e ${{ matrix.env }}
+          fqbn: arduino:avr:uno
+          sketch-paths: |
+            - arduino
+          libraries: |
+            - name: Servo
+            - name: Adafruit TCS34725
+            - name: LiquidCrystal I2C
+            - name: LiquidCrystal
