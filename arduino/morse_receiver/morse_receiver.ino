@@ -75,7 +75,7 @@ char decodeSymbol(const char *code) {
 // ----------------------------------------------------------------------
 char code[8];          // dots and dashes of the letter being received
 uint8_t codeLen = 0;
-char word[17];         // letters received so far (one LCD line)
+char rxWord[17];         // letters received so far (one LCD line)
 uint8_t wordLen = 0;
 bool wordShown = true; // true once the last word is on screen
 
@@ -94,7 +94,7 @@ void showProgress() {
   lcd.print(F("Decoding: "));
   lcd.print(code);
   lcd.setCursor(0, 1);
-  lcd.print(word);
+  lcd.print(rxWord);
 }
 
 void showWord() {
@@ -102,9 +102,9 @@ void showWord() {
   lcd.setCursor(0, 0);
   lcd.print(F("Word received:"));
   lcd.setCursor((16 - wordLen) / 2, 1);
-  lcd.print(word);
+  lcd.print(rxWord);
   Serial.print(F("WORD: "));
-  Serial.println(word);
+  Serial.println(rxWord);
 }
 
 // ----------------------------------------------------------------------
@@ -122,9 +122,9 @@ void addSymbol(char s) {
 void endLetter() {
   if (codeLen == 0) return;
   char c = decodeSymbol(code);
-  if (wordLen < sizeof(word) - 1) {
-    word[wordLen++] = c;
-    word[wordLen] = '\0';
+  if (wordLen < sizeof(rxWord) - 1) {
+    rxWord[wordLen++] = c;
+    rxWord[wordLen] = '\0';
   }
   Serial.print(F(" -> "));
   Serial.println(c);
@@ -143,7 +143,7 @@ void onPressStart(unsigned long now) {
   if (wordShown) {
     // First press of a new word: clear the old one.
     wordLen = 0;
-    word[0] = '\0';
+    rxWord[0] = '\0';
     wordShown = false;
   }
   pressStart = now;
@@ -175,7 +175,7 @@ void setup() {
   lcd.setCursor(0, 1);
   lcd.print(F("Waiting..."));
   code[0] = '\0';
-  word[0] = '\0';
+  rxWord[0] = '\0';
   Serial.println(F("Morse receiver ready"));
 }
 
