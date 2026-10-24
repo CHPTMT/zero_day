@@ -104,6 +104,13 @@ const float LINK1_MM           = 225;   // main arm, pivot to pivot
 const float LINK2_MM           = 160;   // second arm, pivot to wrist
 const float HEAD_MM            = 75;    // wrist to sensor face
 
+// Button pusher: a bar fixed to the second arm, perpendicular to it, pointing
+// straight down when the second arm is at 0 (level).
+const float PUSHER_LEN_MM      = 50;    // length of the bar
+const float PUSHER_MOUNT_MM    = 235;   // from the second arm pivot to where the bar is fixed.
+                                        // 235 = end of the sensor head. At 160 (end of the
+                                        // bare second arm) Point E needs the second arm past +45.
+
 // ======================================================================
 // STATIONS (theta deg, R mm, Z mm from the brief) and standoffs
 // ======================================================================
@@ -113,14 +120,17 @@ struct Station {
   const char *name;
   float theta, r, z, standoff;
   float trim[NJ];
+  bool pusher;      // true: aim the pusher tip, false: aim the sensor face
 };
 
 Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}};  // ultrasonic 10 cm from plate
 Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}};
 Station ST_C       = {"C",       55, 200,  70,  30, {0, 0, 0}};  // colour sensor 3 cm from paper
 Station ST_D       = {"D",      100, 275, 250,  60, {0, 0, 0}};  // listen 6 cm from the source
-Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}};  // 15 mm off the button
-Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}};  // 8 mm past contact = pressed
+// Point E uses the pusher. standoff = gap from the pusher tip to the button
+// along the bar (negative = pushed in past contact).
+Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, true};  // 15 mm off the button
+Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, true};  // 8 mm past contact = pressed
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
 // IND_Z_HIGH (loud) at theta 110, R 275.
@@ -267,9 +277,45 @@ bool inverseKinematics(float theta, float r, float z, float standoff, Pose &out)
   return true;
 }
 
+// Where the pusher tip is for a pose: r and z (mm).
+void pusherTip(const Pose &p, float &r, float &z) {
+  float phi = radians(p.a[J_MAIN]);
+  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);
+  r = LINK1_MM * sin(phi) + PUSHER_MOUNT_MM * cos(psi) + PUSHER_LEN_MM * sin(psi);
+  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + PUSHER_MOUNT_MM * sin(psi) - PUSHER_LEN_MM * cos(psi);
+}
+
+// Joint angles that put the pusher tip `gap` mm short of the point
+// (theta, r, z), measured along the bar. The mount point and the bar form one
+// rigid link, so this is the same two link solution as the sensor. The bar's
+// direction depends on the answer, so it is refined a few times.
+bool pusherIK(float theta, float r, float z, float gap, Pose &out) {
+  float l2 = sqrt(PUSHER_MOUNT_MM * PUSHER_MOUNT_MM + PUSHER_LEN_MM * PUSHER_LEN_MM);
+  float delta = atan2(PUSHER_LEN_MM, PUSHER_MOUNT_MM);
+  float psi = 0;
+  for (uint8_t it = 0; it < 4; it++) {
+    float tr = r - sin(psi) * gap;   // bar points along (sin psi, -cos psi)
+    float tz = z + cos(psi) * gap;
+    float dz = tz - SHOULDER_HEIGHT_MM;
+    float D = sqrt(tr * tr + dz * dz);
+    if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) return false;
+    float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
+    float e = atan2(dz, tr) + acos(constrain(c, -1.0, 1.0));
+    float ex = LINK1_MM * cos(e);
+    float ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
+    psi = atan2(tz - ez, tr - ex) + delta;
+    out.a[J_BASE]  = theta - 90;
+    out.a[J_MAIN]  = 90 - degrees(e);
+    out.a[J_ELBOW] = degrees(psi) + out.a[J_MAIN];
+  }
+  return true;
+}
+
 // Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
-  if (!inverseKinematics(s.theta, s.r, s.z, s.standoff, out)) {
+  bool ok = s.pusher ? pusherIK(s.theta, s.r, s.z, s.standoff, out)
+                     : inverseKinematics(s.theta, s.r, s.z, s.standoff, out);
+  if (!ok) {
     Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
     return false;
   }
@@ -293,6 +339,9 @@ void printPosition(const char *label) {
   Serial.print(F("  2nd ")); Serial.print(cur.a[J_ELBOW], 1);
   Serial.print(F("  | sensor at theta ")); Serial.print(t, 0);
   Serial.print(F(" r ")); Serial.print(r, 0);
+  Serial.print(F(" z ")); Serial.print(z, 0);
+  pusherTip(cur, r, z);
+  Serial.print(F("  pusher tip r ")); Serial.print(r, 0);
   Serial.print(F(" z ")); Serial.println(z, 0);
 }
 

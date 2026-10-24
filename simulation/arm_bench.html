@@ -157,7 +157,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       <div class="panel">
         <h2>Side view</h2>
         <svg id="sideView" viewBox="0 0 640 470" role="img" aria-label="Side view of the arm in the plane it is facing"></svg>
-        <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The dashed line is the standoff from the sensor face to the current target.</p>
+        <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The dashed line is the standoff from the sensor face (or the pusher tip at E) to the current target. The red bar is the 50 mm button pusher, fixed square to the second arm and pointing straight down when the second arm is level.</p>
       </div>
       <div class="panel">
         <h2>Plan view</h2>
@@ -289,6 +289,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 (function () {
   /* ============ geometry and limits, copied from arm_controller.ino ============ */
   var SH = 60, L1 = 225, L2 = 160, HEAD = 75;
+  var PUSH_LEN = 50, PUSH_MOUNT = 235;   // button pusher bar, perpendicular to the 2nd arm, down at 0
   var MIN = [-90, -15, -90], MAX = [90, 50, 45];
   var ZERO = [0, 0, 0];
   var ST = {
@@ -298,8 +299,8 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 60 },
     INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60 },
     INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 60 },
-    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 15 },
-    EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8 }
+    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 15, pusher: true },
+    EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8, pusher: true }
   };
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
   var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 300, GEST = 12;
@@ -320,7 +321,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var ex = L1 * Math.sin(phi), ez = SH + L1 * Math.cos(phi);
     var wx = ex + L2 * Math.cos(psi), wz = ez + L2 * Math.sin(psi);
     var tx = wx + HEAD * Math.cos(psi), tz = wz + HEAD * Math.sin(psi);
-    return { theta: p[0] + 90, ex: ex, ez: ez, wx: wx, wz: wz, r: tx, z: tz, psi: psi };
+    var mx = ex + PUSH_MOUNT * Math.cos(psi), mz = ez + PUSH_MOUNT * Math.sin(psi);
+    var px = mx + PUSH_LEN * Math.sin(psi), pz = mz - PUSH_LEN * Math.cos(psi);
+    return { theta: p[0] + 90, ex: ex, ez: ez, wx: wx, wz: wz, r: tx, z: tz, psi: psi, mx: mx, mz: mz, px: px, pz: pz };
   }
 
   function ik(theta, r, z, s) {
@@ -333,8 +336,23 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     return [theta - 90, phi, psi + phi];
   }
 
+  // Pusher tip `gap` mm short of the point along the bar, refined because the bar direction depends on the answer
+  function pusherIK(theta, r, z, gap) {
+    var l2 = Math.hypot(PUSH_MOUNT, PUSH_LEN), delta = Math.atan2(PUSH_LEN, PUSH_MOUNT), psi = 0, out = null;
+    for (var it = 0; it < 4; it++) {
+      var tr = r - Math.sin(psi) * gap, tz = z + Math.cos(psi) * gap, dz = tz - SH, D = Math.hypot(tr, dz);
+      if (D < 1 || D > L1 + l2 || D < Math.abs(L1 - l2)) return null;
+      var c = (L1 * L1 + D * D - l2 * l2) / (2 * L1 * D);
+      var e = Math.atan2(dz, tr) + Math.acos(clamp(c, -1, 1));
+      var ex = L1 * Math.cos(e), ez = SH + L1 * Math.sin(e);
+      psi = Math.atan2(tz - ez, tr - ex) + delta;
+      out = [theta - 90, 90 - e / RAD, psi / RAD + 90 - e / RAD];
+    }
+    return out;
+  }
+
   function stationPose(st) {
-    var p = ik(st.theta, st.r, st.z, st.s);
+    var p = st.pusher ? pusherIK(st.theta, st.r, st.z, st.s) : ik(st.theta, st.r, st.z, st.s);
     if (!p) { log('[ik] ' + st.name + ' OUT OF REACH'); return null; }
     for (var j = 0; j < 3; j++) {
       if (p[j] < MIN[j] || p[j] > MAX[j]) {
@@ -364,7 +382,13 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h += '<line x1="' + sx(400) + '" y1="' + sy(0) + '" x2="' + sx(400) + '" y2="' + sy(400) + '" stroke="var(--muted)" stroke-dasharray="4 5"/>';
     h += '<text class="t-txt" x="' + (sx(400) + 4) + '" y="' + sy(404) + '">R 400</text>';
     // test stands that lie in the plane the arm faces (5 x 5 cm plates on posts)
-    [ST.A, ST.B, ST.C, ST.D, ST.EH].forEach(function (st) {
+    if (Math.abs(ST.EH.theta - k.theta) <= 3) {   // Point E: button on its breadboard, top face at z 300
+      h += '<line x1="' + sx(ST.EH.r) + '" y1="' + sy(0) + '" x2="' + sx(ST.EH.r) + '" y2="' + sy(ST.EH.z - 30) + '" stroke="var(--line)" stroke-width="6"/>';
+      h += '<rect x="' + sx(ST.EH.r - 40) + '" y="' + sy(ST.EH.z - 18) + '" width="80" height="12" fill="var(--bb)" stroke="var(--muted)"/>';
+      h += '<rect x="' + sx(ST.EH.r - 15) + '" y="' + sy(ST.EH.z - (btnOn ? 4 : 0)) + '" width="30" height="' + (12 - (btnOn ? 4 : 0)) + '" fill="var(--muted)"/>';
+      h += '<text class="t-txt" x="' + sx(ST.EH.r + 46) + '" y="' + sy(ST.EH.z - 14) + '">E button</text>';
+    }
+    [ST.A, ST.B, ST.C, ST.D].forEach(function (st) {
       if (Math.abs(st.theta - k.theta) > 3) return;
       h += '<line x1="' + sx(st.r + 30) + '" y1="' + sy(0) + '" x2="' + sx(st.r + 30) + '" y2="' + sy(st.z) + '" stroke="var(--line)" stroke-width="6"/>';
       h += '<rect x="' + sx(st.r + 25) + '" y="' + sy(st.z + 25) + '" width="6" height="50" fill="var(--muted)"/>';
@@ -385,7 +409,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       h += '<line x1="' + sx(target.r - 9) + '" y1="' + sy(target.z) + '" x2="' + sx(target.r + 9) + '" y2="' + sy(target.z) + '" stroke="var(--muted)"/>';
       h += '<line x1="' + sx(target.r) + '" y1="' + sy(target.z - 9) + '" x2="' + sx(target.r) + '" y2="' + sy(target.z + 9) + '" stroke="var(--muted)"/>';
       h += '<text class="t-ink" x="' + (sx(target.r) + 10) + '" y="' + (sy(target.z) - 10) + '">' + target.label + '</text>';
-      if (on) h += '<line x1="' + sx(k.r) + '" y1="' + sy(k.z) + '" x2="' + sx(target.r) + '" y2="' + sy(target.z) + '" stroke="var(--accent)" stroke-dasharray="3 4"/>';
+      if (on) h += '<line x1="' + sx(target.pusher ? k.px : k.r) + '" y1="' + sy(target.pusher ? k.pz : k.z) + '" x2="' + sx(target.r) + '" y2="' + sy(target.z) + '" stroke="var(--accent)" stroke-dasharray="3 4"/>';
     }
     // links
     h += '<line x1="' + sx(0) + '" y1="' + sy(SH) + '" x2="' + sx(k.ex) + '" y2="' + sy(k.ez) + '" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"/>';
@@ -394,11 +418,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var nx = -Math.sin(k.psi), nz = Math.cos(k.psi);
     h += '<line x1="' + sx(k.wx) + '" y1="' + sy(k.wz) + '" x2="' + sx(k.r) + '" y2="' + sy(k.z) + '" stroke="var(--muted)" stroke-width="5"/>';
     h += '<line x1="' + sx(k.r + nx * 26) + '" y1="' + sy(k.z + nz * 26) + '" x2="' + sx(k.r - nx * 26) + '" y2="' + sy(k.z - nz * 26) + '" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>';
+    // button pusher bar
+    h += '<line x1="' + sx(k.mx) + '" y1="' + sy(k.mz) + '" x2="' + sx(k.px) + '" y2="' + sy(k.pz) + '" stroke="var(--warn)" stroke-width="5" stroke-linecap="round"/>';
+    h += '<circle cx="' + sx(k.px) + '" cy="' + sy(k.pz) + '" r="4" fill="' + (btnOn ? 'var(--accent)' : 'var(--warn)') + '"/>';
     [[0, SH], [k.ex, k.ez], [k.wx, k.wz]].forEach(function (p) {
       h += '<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
     });
     h += '<circle cx="' + sx(k.r) + '" cy="' + sy(k.z) + '" r="5" fill="' + (btnOn ? 'var(--accent)' : 'var(--ink)') + '"/>';
-    h += '<text class="t-acc" x="' + sx(-96) + '" y="' + sy(440) + '" dy="14">sensor face  theta ' + f(k.theta, 0) + '  r ' + f(k.r, 0) + '  z ' + f(k.z, 0) + ' mm</text>';
+    h += '<text class="t-acc" x="' + sx(-96) + '" y="' + sy(440) + '" dy="14">sensor face  theta ' + f(k.theta, 0) + '  r ' + f(k.r, 0) + '  z ' + f(k.z, 0) + ' mm   pusher tip  r ' + f(k.px, 0) + '  z ' + f(k.pz, 0) + '</text>';
     $('sideView').innerHTML = h;
   }
 
@@ -467,7 +494,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   function posLine(label) {
     var k = fk(cur);
     log('[pos] ' + label + '  base ' + f(cur[0]) + '  main ' + f(cur[1]) + '  2nd ' + f(cur[2]) +
-        '  | sensor at theta ' + f(k.theta, 0) + ' r ' + f(k.r, 0) + ' z ' + f(k.z, 0));
+        '  | sensor at theta ' + f(k.theta, 0) + ' r ' + f(k.r, 0) + ' z ' + f(k.z, 0) + '  pusher tip r ' + f(k.px, 0) + ' z ' + f(k.pz, 0));
   }
 
   /* ============ motion engine ============ */
@@ -492,7 +519,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     });
   }
   function snap(p) { for (var j = 0; j < 3; j++) cur[j] = clamp(p[j], MIN[j], MAX[j]); render(); }
-  function setTarget(st, label) { target = st ? { theta: st.theta, r: st.r, z: st.z, label: label || st.name } : null; }
+  function setTarget(st, label) { target = st ? { theta: st.theta, r: st.r, z: st.z, label: label || st.name, pusher: !!st.pusher } : null; }
 
   async function goToPose(p, label, id) {
     if (Math.abs(cur[0] - p[0]) > 1) {

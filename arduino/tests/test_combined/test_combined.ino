@@ -38,9 +38,11 @@ const float REL_MAX[NJ] = { 90,  50,  45};
 
 // ---------------- dimensions (mm) ----------------
 const float SHOULDER_HEIGHT_MM = 60, LINK1_MM = 225, LINK2_MM = 160, HEAD_MM = 75;
+// Button pusher bar, perpendicular to the second arm, pointing down at 0
+const float PUSHER_LEN_MM = 50, PUSHER_MOUNT_MM = 235;
 
 // ---------------- stations ----------------
-struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; };
+struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; bool pusher; };
 Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}};
 Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}};
 Station ST_C       = {"C",       55, 200,  70,  30, {0, 0, 0}};
@@ -48,8 +50,8 @@ Station ST_D       = {"D",      100, 275, 250,  60, {0, 0, 0}};
 Station ST_IND_LO  = {"ind low", 110, 275, 150,  60, {0, 0, 0}};
 Station ST_IND_MID = {"ind mid", 110, 275, 250,  60, {0, 0, 0}};
 Station ST_IND_HI  = {"ind high",110, 275, 350,  60, {0, 0, 0}};
-Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}};
-Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}};
+Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, true};
+Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, true};
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint8_t STEP_MS = 15;
@@ -103,7 +105,40 @@ void forwardKinematics(const Pose &p, float &theta, float &r, float &z) {
   z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + l2 * sin(psi);
 }
 
+void pusherTip(const Pose &p, float &r, float &z) {
+  float phi = radians(p.a[J_MAIN]);
+  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);
+  r = LINK1_MM * sin(phi) + PUSHER_MOUNT_MM * cos(psi) + PUSHER_LEN_MM * sin(psi);
+  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + PUSHER_MOUNT_MM * sin(psi) - PUSHER_LEN_MM * cos(psi);
+}
+
+// Pusher tip `gap` mm short of the point along the bar (same as arm_controller.ino)
+bool pusherIK(const Station &s, Pose &out) {
+  float l2 = sqrt(PUSHER_MOUNT_MM * PUSHER_MOUNT_MM + PUSHER_LEN_MM * PUSHER_LEN_MM);
+  float delta = atan2(PUSHER_LEN_MM, PUSHER_MOUNT_MM);
+  float psi = 0;
+  for (uint8_t it = 0; it < 4; it++) {
+    float tr = s.r - sin(psi) * s.standoff, tz = s.z + cos(psi) * s.standoff;
+    float dz = tz - SHOULDER_HEIGHT_MM, D = sqrt(tr * tr + dz * dz);
+    if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) return false;
+    float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
+    float e = atan2(dz, tr) + acos(constrain(c, -1.0, 1.0));
+    float ex = LINK1_MM * cos(e), ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
+    psi = atan2(tz - ez, tr - ex) + delta;
+    out.a[J_BASE] = s.theta - 90 + s.trim[J_BASE];
+    out.a[J_MAIN] = 90 - degrees(e) + s.trim[J_MAIN];
+    out.a[J_ELBOW] = degrees(psi) + 90 - degrees(e) + s.trim[J_ELBOW];
+  }
+  return true;
+}
+
 bool stationPose(const Station &s, Pose &out) {
+  if (s.pusher) {
+    if (!pusherIK(s, out)) { Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH")); return false; }
+    for (uint8_t j = 0; j < NJ; j++)
+      if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) { Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" at a joint limit")); }
+    return true;
+  }
   float l2 = LINK2_MM + HEAD_MM + s.standoff;
   float dz = s.z - SHOULDER_HEIGHT_MM;
   float D = sqrt(s.r * s.r + dz * dz);
@@ -137,6 +172,9 @@ void printPosition(const char *label) {
   Serial.print(F("  2nd ")); Serial.print(cur.a[J_ELBOW], 1);
   Serial.print(F("  | sensor at theta ")); Serial.print(t, 0);
   Serial.print(F(" r ")); Serial.print(r, 0);
+  Serial.print(F(" z ")); Serial.print(z, 0);
+  pusherTip(cur, r, z);
+  Serial.print(F("  pusher tip r ")); Serial.print(r, 0);
   Serial.print(F(" z ")); Serial.println(z, 0);
 }
 
