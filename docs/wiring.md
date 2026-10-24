@@ -4,34 +4,32 @@
 
 | Device | Pin on device | Uno pin |
 |---|---|---|
-| Base servo | signal | D3 |
-| Main arm servo (shoulder) | signal | D5 |
-| Second arm servo (elbow) | signal | D6 |
-| Wrist servo, only if `USE_WRIST 1` | signal | D9 |
-| HC-SR04 ultrasonic | TRIG / ECHO | D7 / D8 |
-| TCS34725 colour sensor | SDA / SCL | A4 / A5 |
-| TCS34725 colour sensor | LED | D4 |
-| Sound sensor | AO | A0 |
-| Red LED (220 ohm) | anode | D10 |
-| Green LED (220 ohm) | anode | D11 |
-| Blue LED (220 ohm) | anode | D12 |
+| Base servo | signal | D2 |
+| Main arm servo, left | signal | D3 |
+| Main arm servo, right | signal | D4 |
+| Second arm servo | signal | D5 |
+| Ultrasonic (yellow) | ECHO | D6 |
+| Ultrasonic (brown) | TRIG | D7 |
+| Ultrasonic | VCC (red) / GND (grey) | 5 V / GND |
+| Sound sensor | AO | A1 |
+| Sound sensor | VCC / GND | 5 V / GND |
+| Colour sensor TCS34725 | SDA / SCL | A4 / A5 |
+| Colour sensor | VCC / GND | 5 V / GND |
+| Red LED, 220 ohm (not wired yet) | anode | D8 |
+| Green LED, 220 ohm (not wired yet) | anode | D9 |
+| Blue LED, 220 ohm (not wired yet) | anode | D10 |
 | Status | onboard LED | D13 |
 
-Servo power: all servo red wires to an external 5 V supply rated 2 A or more, servo brown wires to that supply's ground, and that ground joined to an Uno GND pin. Three or four SG90s pulling stall current through the Uno's 5 V pin cause brownout resets mid-run.
+The two main arm servos face each other, so the code always drives them in opposite directions: left = zero + angle, right = zero - angle.
 
-Sensors (ultrasonic, colour, sound) and LEDs run from the Uno 5 V and GND.
-
-The sound sensor DO pin stays unconnected. The analogue output gives the amplitude Task 3 needs.
+Servo power: four SG90s at stall can draw over 2 A. Feed the servo red wires from an external 5 V supply, join its ground to the Uno GND, and keep the sensors on the Uno 5 V. Servos on the Uno 5 V pin cause resets halfway through a run.
 
 ## Morse receiver (Uno 2, separate board, rule R2)
 
 | Device | Pin on device | Uno pin |
 |---|---|---|
-| Push button | one leg | D7 |
-| Push button | other leg | GND |
+| Push button | one leg / other leg | D7 / GND |
 | LCD I2C backpack | SDA / SCL | A4 / A5 |
 | LCD I2C backpack | VCC / GND | 5 V / GND |
 
-The button uses the internal pull-up, so no resistor is needed. For a parallel 16x2 LCD set `LCD_I2C 0` and wire RS D12, E D11, D4 D5, D5 D4, D6 D3, D7 D2, with a 10k potentiometer on V0 for contrast.
-
-The receiver Uno must have its own power (USB from a laptop or a power bank). It shares nothing with Uno 1.
+Until the button and LCD are on hand, the arm controller prints every Morse dot and dash to the Serial Monitor.

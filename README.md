@@ -8,19 +8,25 @@ Demonstration: Monday 26 October 2026, NWE Lab, Session 11 (12:00 to 12:10), Sta
 
 | Sketch | Board | Purpose |
 |---|---|---|
-| `arduino/arm_controller` | Uno 1 | Full autonomous demonstration, Tasks 1 to 4 |
+| `arduino/arm_controller` | Uno 1 | Full autonomous demonstration, Tasks 1 to 4, everything printed to Serial |
 | `arduino/morse_receiver` | Uno 2 | Decodes the button presses and shows the word on the LCD |
-| `arduino/tests/test_servos` | Uno 1 | Sweep servos, jog joints, teach station poses, try gestures |
-| `arduino/tests/test_ultrasonic` | Uno 1 | Distance readings and the present / empty decision |
-| `arduino/tests/test_colour` | Uno 1 | Colour readings and red / green / blue calibration |
-| `arduino/tests/test_sound` | Uno 1 | Tap amplitude and indicator level |
-| `arduino/tests/test_leds` | Uno 1 | Cycle the three external LEDs |
-| `arduino/tests/test_morse_press` | Uno 1 | Press the Point E button in Morse for any word |
-| `arduino/tests/test_button_receiver` | Uno 2 | LCD check and press duration readout |
+| `arduino/tests/test_servos` | Uno 1 | Zero hold, direction check, full sweep of every joint, manual control |
+| `arduino/tests/test_sensors` | Uno 1 | Distance, colour and sound together, with colour and tap calibration |
+| `arduino/tests/test_combined` | Uno 1 | Every station, gesture and press in order, printing angles and readings |
 
-Each sketch sits in a folder with the same name, which the Arduino IDE requires. Open the `.ino` file directly.
+Each sketch sits in a folder with the same name, which the Arduino IDE requires. Libraries: Servo, Adafruit TCS34725, LiquidCrystal I2C (receiver only).
 
-Libraries (Arduino IDE, Library Manager): Servo, Adafruit TCS34725, LiquidCrystal I2C (Frank de Brabander).
+## Arm
+
+Main arm 225 mm, second arm 160 mm, sensor face 75 mm beyond the wrist, main arm pivot 60 mm above the base plate. Joint angles are relative, 0 at the zero pose:
+
+| Joint | Zero | Range |
+|---|---|---|
+| Base (D2) | facing forward | -90 (right) to +90 (left) |
+| Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
+| Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
+
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, so the sensor head points straight at each target with a set standoff.
 
 ## Stations (theta deg, R mm, Z mm)
 
@@ -36,8 +42,6 @@ Libraries (Arduino IDE, Library Manager): Servo, Adafruit TCS34725, LiquidCrysta
 ## How the run works
 
 `arm_controller` is a switch-case state machine: START, TASK1 to TASK4, FINISH, IDLE. Every sensor read has a timeout (ultrasonic 25 ms per ping, sound 3 s) and a safe default, so a bad reading never stops the run. Each task can be turned off with `RUN_TASK_x` as a fallback.
-
-Station poses are raw servo angles, taught on the real arm with `test_servos`. The values in the sketch are placeholders until taught.
 
 The Morse unit is 300 ms (dot 300 ms, dash 900 ms). The receiver splits dots from dashes at 600 ms and ends a word after 1.5 s of silence. A simulation of the arm timing into the receiver code decodes all 10 brief words correctly with press timing errors up to about 250 ms, including contact bounce.
 

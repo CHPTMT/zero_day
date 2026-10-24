@@ -1,33 +1,43 @@
 /*
  * MECN3066A Mechatronics II, Group 21
- * Recycled robotic arm: main controller (Arduino Uno R3)
+ * Recycled robotic arm: full demonstration (Arduino Uno R3)
  *
- * Runs the full autonomous demonstration as a state machine:
- *   Task 1  Points A and B  ultrasonic presence check, YES / NO / BOX gesture
- *   Task 2  Point C         TCS34725 colour read, light red / green / blue LED
- *   Task 3  Point D         capture a sound impulse, point at a height on the
- *                           volume indicator proportional to loudness
- *   Task 4  Point E         press the push button in Morse code for the
- *                           assigned three letter word
+ * Sequence (state machine, fully autonomous after reset):
+ *   ZERO    all joints at relative 0 for 5 s (also the window to type the word)
+ *   TASK 1  Points A and B: ultrasonic presence, YES / NO / BOX gesture
+ *   TASK 2  Point C: colour sensor, light the matching LED
+ *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
+ *   TASK 4  Point E: press the button in Morse for the 3 letter word
+ *   FINISH  back to zero, print a summary
+ * Everything the arm does and senses is printed to the Serial Monitor
+ * (115200 baud), so the run can be followed without the LCD.
  *
- * Station coordinates from the brief (theta deg, R mm, Z mm):
- *   A (10, 350, 320)   B (10, 350, 150)   C (55, 200, 70)
- *   D (100, 275, 250)  Volume indicator (110, 275, 250)   E (170, 250, 300)
+ * ANGLES
+ *   All joint angles in this file are RELATIVE, with 0 at the zero pose:
+ *     Base      0 = facing forward (middle of the half circle, theta 90)
+ *               +90 = left (towards Point E), -90 = right (towards A and B)
+ *     Main arm  0 = upright, + = forward (max +50), - = back (max -15)
+ *               Driven by two servos facing each other (left D3, right D4),
+ *               always moved in opposite directions.
+ *     2nd arm   0 = level with the ground when the main arm is upright,
+ *               + = up (max +45), - = down (max -90)
+ *   SERVO_ZERO_xxx holds the raw servo value that equals relative 0.
+ *   If a joint moves the wrong way, flip its xxx_DIR from 1 to -1.
  *
- * Every sensor wait has a timeout and every bad reading has a safe default,
- * so the arm never stalls and always moves on to the next task.
+ * POSITIONING
+ *   Joint angles are calculated on board from the station coordinates in the
+ *   brief and the arm dimensions below (two link inverse kinematics). The
+ *   sensor head points along the second arm, and each station has a standoff
+ *   (gap between the sensor face and the target). Fine tune a station with
+ *   its trim values instead of changing the maths.
  *
  * QUICK EDITS ON THE DAY
- *   1. Target word: open the Serial Monitor (115200 baud, newline ending)
- *      within WORD_WINDOW_MS of reset and type the word, e.g. NET. It is saved
- *      in EEPROM and survives power cycles. Or change DEFAULT_WORD below.
- *   2. Station poses: section "STATION POSES". Tune them with test_servos.
- *   3. Thresholds: section "SENSOR THRESHOLDS".
- *   4. Fallback: set any RUN_TASK_x to false to skip a task that is failing.
+ *   Word: type it in the Serial Monitor during the 5 s zero hold (e.g. NET).
+ *         Saved in EEPROM. Or change DEFAULT_WORD.
+ *   Fallback: set RUN_TASK_x to false to skip a task that keeps failing.
+ *   Re-run: press the Uno reset button.
  *
- * Re-run: press the Uno reset button. The run starts automatically.
- *
- * Libraries (Library Manager): Servo, Adafruit TCS34725
+ * Libraries: Servo, Adafruit TCS34725
  */
 
 #include <Servo.h>
@@ -36,263 +46,318 @@
 #include <Adafruit_TCS34725.h>
 
 // ======================================================================
-// TASK SWITCHES (fallback: turn off a task that misbehaves on the day)
+// TASK SWITCHES
 // ======================================================================
-const bool RUN_TASK_1 = true;   // Points A and B, ultrasonic and gestures
-const bool RUN_TASK_2 = true;   // Point C, colour
-const bool RUN_TASK_3 = true;   // Point D, sound and height
-const bool RUN_TASK_4 = true;   // Point E, Morse code
+const bool RUN_TASK_1 = true;   // Points A and B
+const bool RUN_TASK_2 = true;   // Point C
+const bool RUN_TASK_3 = true;   // Point D
+const bool RUN_TASK_4 = true;   // Point E
 
-// ======================================================================
-// TARGET WORD
-// ======================================================================
-const char DEFAULT_WORD[] = "NET";          // used if nothing valid is in EEPROM
-const unsigned long WORD_WINDOW_MS = 4000;  // time after reset to type a new word
-const unsigned long START_DELAY_MS = 1000;  // pause before the run starts
+const char DEFAULT_WORD[] = "NET";
+const unsigned long ZERO_HOLD_MS = 5000;   // hold at zero before the run
 
 // ======================================================================
 // PINS
 // ======================================================================
-// Servos. Power them from an external 5 V supply (2 A or more) with the
-// supply ground joined to the Uno GND. Do not run them from the Uno 5 V pin.
-const uint8_t PIN_SERVO_BASE     = 3;
-const uint8_t PIN_SERVO_SHOULDER = 5;   // main arm
-const uint8_t PIN_SERVO_ELBOW    = 6;   // second arm
-const uint8_t PIN_SERVO_WRIST    = 9;   // head pitch, only used if USE_WRIST
-
-// Ultrasonic HC-SR04
-const uint8_t PIN_US_TRIG = 7;
-const uint8_t PIN_US_ECHO = 8;
-
-// External colour LEDs on the off-board breadboard (each through 220 ohm)
-const uint8_t PIN_LED_RED   = 10;
-const uint8_t PIN_LED_GREEN = 11;
-const uint8_t PIN_LED_BLUE  = 12;
-
-// TCS34725 on I2C: SDA = A4, SCL = A5. Its LED pin goes to PIN_TCS_LED.
-const uint8_t PIN_TCS_LED = 4;
-
-// Sound sensor analogue output (KY-038 / KY-037 AO pin)
-const uint8_t PIN_SOUND = A0;
-
-// Onboard LED for status blinks
-const uint8_t PIN_STATUS = 13;
+const uint8_t PIN_BASE       = 2;
+const uint8_t PIN_MAIN_LEFT  = 3;
+const uint8_t PIN_MAIN_RIGHT = 4;
+const uint8_t PIN_ELBOW      = 5;    // second arm
+const uint8_t PIN_US_ECHO    = 6;
+const uint8_t PIN_US_TRIG    = 7;
+const uint8_t PIN_SOUND      = A1;   // sound sensor AO
+// Colour sensor on I2C: SDA = A4, SCL = A5
+// External colour LEDs (each through 220 ohm to GND). Not wired yet:
+// connect them to these pins, or change the numbers.
+const uint8_t PIN_LED_RED    = 8;
+const uint8_t PIN_LED_GREEN  = 9;
+const uint8_t PIN_LED_BLUE   = 10;
+const uint8_t PIN_STATUS     = 13;   // onboard LED
 
 // ======================================================================
-// SERVOS
+// SERVO CALIBRATION
 // ======================================================================
-// Set USE_WRIST to 1 if the head has its own pitch servo. With 0 the arm
-// uses three servos and the YES nod is done with the elbow.
-#define USE_WRIST 0
+// Raw servo value (0 to 180) at relative 0. Adjust until test_servos shows
+// the base facing forward, the main arm upright and the second arm level.
+const int SERVO_ZERO_BASE  = 90;
+const int SERVO_ZERO_LEFT  = 90;
+const int SERVO_ZERO_RIGHT = 90;
+const int SERVO_ZERO_ELBOW = 90;
 
-#if USE_WRIST
-const uint8_t NUM_SERVOS = 4;
-#else
-const uint8_t NUM_SERVOS = 3;
-#endif
+// Direction of each joint. Flip to -1 if the joint moves the wrong way.
+// MAIN_DIR = 1 means: forward = left servo value goes up, right servo goes down.
+const int8_t BASE_DIR  = 1;
+const int8_t MAIN_DIR  = 1;
+const int8_t ELBOW_DIR = 1;
 
-enum Joint : uint8_t { BASE = 0, SHOULDER = 1, ELBOW = 2, WRIST = 3 };
-
-const uint8_t SERVO_PINS[4] = {PIN_SERVO_BASE, PIN_SERVO_SHOULDER, PIN_SERVO_ELBOW, PIN_SERVO_WRIST};
-
-// Software limits in raw servo degrees. Tighten these if a link can hit the
-// base or a stand. Every write is clamped to these.
-const uint8_t SERVO_MIN[4] = {0,   10,  0,   0};
-const uint8_t SERVO_MAX[4] = {180, 170, 180, 180};
+// Relative limits in degrees
+enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
+const float REL_MIN[NJ] = {-90, -15, -90};
+const float REL_MAX[NJ] = { 90,  50,  45};
+const char *JOINT_NAMES[NJ] = {"base", "main", "2nd"};
 
 // ======================================================================
-// STATION POSES (raw servo degrees: base, shoulder, elbow, wrist)
+// ARM DIMENSIONS (mm)
 // ======================================================================
-// PLACEHOLDERS. Base values follow theta from the brief, assuming the base
-// servo reads 0 deg along theta = 0. Shoulder and elbow values must be taught
-// on the real arm with test_servos, which prints lines ready to paste here.
-struct Pose { uint8_t a[4]; };
+const float SHOULDER_HEIGHT_MM = 60;    // base plate to main arm pivot. Measure this.
+const float LINK1_MM           = 225;   // main arm, pivot to pivot
+const float LINK2_MM           = 160;   // second arm, pivot to wrist
+const float HEAD_MM            = 75;    // wrist to sensor face
 
-Pose POSE_HOME    = {{ 90,  90,  90, 90}};   // parked, safe start and end
-Pose POSE_TRAVEL  = {{ 90, 110,  70, 90}};   // lifted pose used while the base turns (base value ignored)
+// ======================================================================
+// STATIONS (theta deg, R mm, Z mm from the brief) and standoffs
+// ======================================================================
+// standoff = gap from the sensor face to the target along the pointing line.
+// trim = extra degrees added to the calculated base / main / 2nd angles.
+struct Station {
+  const char *name;
+  float theta, r, z, standoff;
+  float trim[NJ];
+};
 
-Pose POSE_A       = {{ 10, 120,  80, 90}};   // sensor level with A, facing the plate
-Pose POSE_B       = {{ 10,  80,  70, 90}};   // sensor level with B, facing the plate
-Pose POSE_C       = {{ 55,  60,  40, 90}};   // colour sensor 10 to 20 mm above the paper, no contact
-Pose POSE_D       = {{100, 110,  80, 90}};   // sound sensor next to the source at D
-Pose POSE_D_LOW   = {{110,  90,  60, 90}};   // pointer at the bottom of the indicator (quiet)
-Pose POSE_D_HIGH  = {{110, 130, 100, 90}};   // pointer at the top of the indicator (loud)
-Pose POSE_E_HOVER = {{170, 120,  90, 90}};   // a few mm off the button, not touching
-Pose POSE_E_PRESS = {{170, 115,  84, 90}};   // button fully pressed
+Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}};  // ultrasonic 10 cm from plate
+Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}};
+Station ST_C       = {"C",       55, 200,  70,  30, {0, 0, 0}};  // colour sensor 3 cm from paper
+Station ST_D       = {"D",      100, 275, 250,  60, {0, 0, 0}};  // listen 6 cm from the source
+Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}};  // 15 mm off the button
+Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}};  // 8 mm past contact = pressed
 
-// Turn the base only after lifting to POSE_TRAVEL. Set false if the arm
-// clears every stand without lifting.
-const bool USE_TRAVEL_POSE = true;
+// Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
+// IND_Z_HIGH (loud) at theta 110, R 275.
+const float IND_THETA    = 110;
+const float IND_R        = 275;
+const float IND_Z_LOW    = 150;
+const float IND_Z_HIGH   = 350;
+const float IND_STANDOFF = 60;
 
-// Motion timing
-const uint16_t MOVE_MS       = 1200;  // typical joint move duration
-const uint16_t BASE_TURN_MS  = 1500;  // base swing between stations
-const uint8_t  STEP_MS       = 15;    // servo update interval while moving
-const uint16_t SETTLE_MS     = 400;   // wait after a move before reading sensors
+// ======================================================================
+// MOTION
+// ======================================================================
+const uint16_t MOVE_MS      = 1200;
+const uint16_t BASE_TURN_MS = 1500;
+const uint8_t  STEP_MS      = 15;
+const uint16_t SETTLE_MS    = 400;
+const bool     USE_TRAVEL   = true;          // lift before turning the base
+const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
+const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
 
-// Gestures
-const uint8_t  GESTURE_PITCH_DEG = 15;  // YES nod size
-const uint8_t  GESTURE_YAW_DEG   = 15;  // NO shake size
-const uint8_t  GESTURE_REPEATS   = 3;
-const uint16_t GESTURE_STEP_MS   = 400;
+const float    GESTURE_DEG     = 12;
+const uint8_t  GESTURE_REPEATS = 3;
+const uint16_t GESTURE_STEP_MS = 400;
 
 // ======================================================================
 // SENSOR THRESHOLDS
 // ======================================================================
-// Ultrasonic: an object is present if the distance is inside this band.
-// Tune with test_ultrasonic: measure with the plate in place and with it removed.
 const float    US_DETECT_MIN_CM = 2.0;
-const float    US_DETECT_MAX_CM = 25.0;
-const uint8_t  US_SAMPLES       = 5;       // median of this many pings
-const unsigned long US_TIMEOUT_US = 25000; // about 4 m, so pulseIn never hangs
+const float    US_DETECT_MAX_CM = 20.0;      // standoff 10 cm, plus 10 cm margin
+const uint8_t  US_SAMPLES       = 5;
+const unsigned long US_TIMEOUT_US = 25000;
 
-// Colour: normalised reference values r/(r+g+b), g/(...), b/(...).
-// Calibrate with test_colour on the actual paper at the actual distance.
-const float REF_RED[3]   = {0.58, 0.23, 0.19};
+const float REF_RED[3]   = {0.58, 0.23, 0.19};   // calibrate with test_sensors
 const float REF_GREEN[3] = {0.28, 0.44, 0.28};
 const float REF_BLUE[3]  = {0.20, 0.32, 0.48};
-const uint16_t COLOUR_MIN_CLEAR = 30;      // below this the reading is treated as invalid
+const uint16_t COLOUR_MIN_CLEAR = 30;
 const uint8_t  COLOUR_SAMPLES   = 3;
 
-// Sound: amplitudes are peak to peak ADC counts over SOUND_WINDOW_MS.
-// Calibrate with test_sound: note a soft tap and a hard tap.
-const uint16_t SOUND_TRIGGER     = 40;     // deviation from baseline that starts a capture
-const uint16_t SOUND_AMP_MIN     = 40;     // maps to the bottom of the indicator
-const uint16_t SOUND_AMP_MAX     = 600;    // maps to the top of the indicator
-const uint16_t SOUND_WINDOW_MS   = 150;
-const unsigned long SOUND_TIMEOUT_MS = 3000; // brief asks for 2 to 3 s timeouts
-const uint16_t SOUND_HOLD_MS     = 3000;   // hold the height so the marker sees it
+const uint16_t SOUND_TRIGGER   = 40;
+const uint16_t SOUND_AMP_MIN   = 40;
+const uint16_t SOUND_AMP_MAX   = 600;
+const uint16_t SOUND_WINDOW_MS = 150;
+const unsigned long SOUND_TIMEOUT_MS = 3000;
+const uint16_t SOUND_HOLD_MS   = 3000;
 
-// Morse: must match MORSE_UNIT_MS in morse_receiver.ino
-const uint16_t MORSE_UNIT_MS     = 300;    // dot = 1 unit, dash = 3, letter gap = 3
-const int16_t  PRESS_EXTRA_MS    = 0;      // add or remove time if dots read as dashes
+const uint16_t MORSE_UNIT_MS  = 300;   // must match morse_receiver.ino
+const int16_t  PRESS_EXTRA_MS = 0;
 
 // ======================================================================
 // GLOBALS
 // ======================================================================
-Servo servos[4];
-uint8_t current[4];  // last angle written to each servo
+Servo sBase, sLeft, sRight, sElbow;
+struct Pose { float a[NJ]; };
+Pose cur = {{0, 0, 0}};
+const Pose ZERO_POSE = {{0, 0, 0}};
 
 Adafruit_TCS34725 tcs(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
 bool tcsOk = false;
-
 char targetWord[4];
 
-enum State : uint8_t {
-  ST_START, ST_TASK1, ST_TASK2, ST_TASK3, ST_TASK4, ST_FINISH, ST_IDLE
-};
+enum State : uint8_t { ST_START, ST_TASK1, ST_TASK2, ST_TASK3, ST_TASK4, ST_FINISH, ST_IDLE };
 State state = ST_START;
 
-// Results kept for the end of run summary
 bool resultA = false, resultB = false;
+float distA = -1, distB = -1;
 char resultColour = '-';
 int  resultSound = -1;
+int  resultLevel = 0;
 
 // ======================================================================
-// SERVO MOTION
+// SERVO OUTPUT
 // ======================================================================
+int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
 
-// Write one servo, clamped to its software limits.
-void writeJoint(uint8_t j, int angle) {
-  angle = constrain(angle, SERVO_MIN[j], SERVO_MAX[j]);
-  servos[j].write(angle);
-  current[j] = angle;
+// Set one joint to a relative angle. The main arm writes both servos in
+// opposite directions so they twist the shaft together.
+void writeJoint(uint8_t j, float rel) {
+  rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
+  cur.a[j] = rel;
+  switch (j) {
+    case J_BASE:
+      sBase.write(rawClamp(SERVO_ZERO_BASE + BASE_DIR * rel));
+      break;
+    case J_MAIN:
+      sLeft.write(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * rel));
+      sRight.write(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+      break;
+    case J_ELBOW:
+      sElbow.write(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
+      break;
+  }
 }
 
-// Move all servos together from where they are to the target pose over
-// durationMs, with cosine easing so the arm starts and stops gently.
-void moveTo(const Pose &target, uint16_t durationMs) {
-  uint8_t start[4];
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) start[j] = current[j];
-  uint16_t steps = max(1, durationMs / STEP_MS);
+void writePose(const Pose &p) {
+  for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]);
+}
+
+// Smooth move of all joints together with cosine easing.
+void moveTo(const Pose &target, uint16_t ms) {
+  Pose start = cur;
+  uint16_t steps = max(1, ms / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
-    float t = (float)s / steps;
-    float e = 0.5 - 0.5 * cos(t * PI);
-    for (uint8_t j = 0; j < NUM_SERVOS; j++) {
-      writeJoint(j, start[j] + (int)round((target.a[j] - start[j]) * e));
-    }
+    float e = 0.5 - 0.5 * cos(PI * s / steps);
+    for (uint8_t j = 0; j < NJ; j++) writeJoint(j, start.a[j] + (target.a[j] - start.a[j]) * e);
     delay(STEP_MS);
   }
 }
 
-// Move a single joint smoothly, leaving the others where they are.
-void moveJoint(uint8_t j, int angle, uint16_t durationMs) {
-  Pose p;
-  for (uint8_t k = 0; k < 4; k++) p.a[k] = current[k];
-  p.a[j] = constrain(angle, SERVO_MIN[j], SERVO_MAX[j]);
-  moveTo(p, durationMs);
+void moveJoint(uint8_t j, float rel, uint16_t ms) {
+  Pose p = cur;
+  p.a[j] = rel;
+  moveTo(p, ms);
 }
 
-// Go to a station: lift, swing the base, then lower onto the station pose.
-// Lifting first keeps the head clear of the stands while the base turns.
-void goToStation(const Pose &station, const char *name) {
-  Serial.print(F("[move] -> "));
-  Serial.println(name);
-  if (USE_TRAVEL_POSE && current[BASE] != station.a[BASE]) {
-    Pose lift = POSE_TRAVEL;
-    lift.a[BASE] = current[BASE];
+// ======================================================================
+// KINEMATICS
+// ======================================================================
+// Where the sensor face is for a pose: theta (deg), r and z (mm).
+void forwardKinematics(const Pose &p, float &theta, float &r, float &z) {
+  float phi = radians(p.a[J_MAIN]);                 // main arm from vertical
+  float psi = radians(p.a[J_ELBOW] - p.a[J_MAIN]);  // second arm from horizontal
+  float l2 = LINK2_MM + HEAD_MM;
+  theta = p.a[J_BASE] + 90;
+  r = LINK1_MM * sin(phi) + l2 * cos(psi);
+  z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + l2 * sin(psi);
+}
+
+// Joint angles that put the sensor face `standoff` mm from the point
+// (theta, r, z), pointing straight at it. Returns false if out of reach.
+bool inverseKinematics(float theta, float r, float z, float standoff, Pose &out) {
+  float l2 = LINK2_MM + HEAD_MM + standoff;
+  float dz = z - SHOULDER_HEIGHT_MM;
+  float D = sqrt(r * r + dz * dz);
+  if (D < 1 || D > LINK1_MM + l2 || D < fabs(LINK1_MM - l2)) return false;
+  float c = (LINK1_MM * LINK1_MM + D * D - l2 * l2) / (2 * LINK1_MM * D);
+  float e = atan2(dz, r) + acos(constrain(c, -1.0, 1.0));   // elbow up solution
+  float ex = LINK1_MM * cos(e);
+  float ez = SHOULDER_HEIGHT_MM + LINK1_MM * sin(e);
+  float phi = 90 - degrees(e);
+  float psi = degrees(atan2(z - ez, r - ex));
+  out.a[J_BASE]  = theta - 90;
+  out.a[J_MAIN]  = phi;
+  out.a[J_ELBOW] = psi + phi;
+  return true;
+}
+
+// Station pose with trims. Prints a warning and clamps if a limit is hit.
+bool stationPose(const Station &s, Pose &out) {
+  if (!inverseKinematics(s.theta, s.r, s.z, s.standoff, out)) {
+    Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
+    return false;
+  }
+  for (uint8_t j = 0; j < NJ; j++) {
+    out.a[j] += s.trim[j];
+    if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) {
+      Serial.print(F("[ik] ")); Serial.print(s.name); Serial.print(F(" ")); Serial.print(JOINT_NAMES[j]);
+      Serial.print(F(" limit, wanted ")); Serial.println(out.a[j]);
+      out.a[j] = constrain(out.a[j], REL_MIN[j], REL_MAX[j]);
+    }
+  }
+  return true;
+}
+
+void printPosition(const char *label) {
+  float t, r, z;
+  forwardKinematics(cur, t, r, z);
+  Serial.print(F("[pos] ")); Serial.print(label);
+  Serial.print(F("  base ")); Serial.print(cur.a[J_BASE], 1);
+  Serial.print(F("  main ")); Serial.print(cur.a[J_MAIN], 1);
+  Serial.print(F("  2nd ")); Serial.print(cur.a[J_ELBOW], 1);
+  Serial.print(F("  | sensor at theta ")); Serial.print(t, 0);
+  Serial.print(F(" r ")); Serial.print(r, 0);
+  Serial.print(F(" z ")); Serial.println(z, 0);
+}
+
+// Lift, swing the base, then settle onto the pose.
+void goToPose(const Pose &p, const char *label) {
+  if (USE_TRAVEL && fabs(cur.a[J_BASE] - p.a[J_BASE]) > 1) {
+    Pose lift = {{cur.a[J_BASE], TRAVEL_MAIN, TRAVEL_ELBOW}};
     moveTo(lift, MOVE_MS);
-    Pose swing = POSE_TRAVEL;
-    swing.a[BASE] = station.a[BASE];
-    moveTo(swing, BASE_TURN_MS);
+    lift.a[J_BASE] = p.a[J_BASE];
+    moveTo(lift, BASE_TURN_MS);
   }
-  moveTo(station, MOVE_MS);
+  moveTo(p, MOVE_MS);
   delay(SETTLE_MS);
+  printPosition(label);
+}
+
+// Go to a station. If the maths fails the arm stays put and the task
+// carries on with whatever it can sense.
+void goToStation(const Station &s) {
+  Pose p;
+  if (stationPose(s, p)) goToPose(p, s.name);
 }
 
 // ======================================================================
-// GESTURES (Task 1)
+// GESTURES
 // ======================================================================
-// The joint that tilts the head up and down.
-uint8_t pitchJoint() { return USE_WRIST ? WRIST : ELBOW; }
-
-// YES: vertical pitch, up and down.
-void gestureYes() {
-  Serial.println(F("[gesture] YES"));
-  uint8_t j = pitchJoint();
-  int c = current[j];
+void gestureYes() {   // vertical: second arm up and down
+  Serial.println(F("[gesture] YES (up / down)"));
+  float c = cur.a[J_ELBOW];
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
-    moveJoint(j, c + GESTURE_PITCH_DEG, GESTURE_STEP_MS);
-    moveJoint(j, c - GESTURE_PITCH_DEG, GESTURE_STEP_MS);
+    moveJoint(J_ELBOW, c + GESTURE_DEG, GESTURE_STEP_MS);
+    moveJoint(J_ELBOW, c - GESTURE_DEG, GESTURE_STEP_MS);
   }
-  moveJoint(j, c, GESTURE_STEP_MS);
+  moveJoint(J_ELBOW, c, GESTURE_STEP_MS);
 }
 
-// NO: horizontal yaw, left and right, using the base.
-void gestureNo() {
-  Serial.println(F("[gesture] NO"));
-  int c = current[BASE];
+void gestureNo() {    // horizontal: base left and right
+  Serial.println(F("[gesture] NO (left / right)"));
+  float c = cur.a[J_BASE];
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
-    moveJoint(BASE, c + GESTURE_YAW_DEG, GESTURE_STEP_MS);
-    moveJoint(BASE, c - GESTURE_YAW_DEG, GESTURE_STEP_MS);
+    moveJoint(J_BASE, c + GESTURE_DEG, GESTURE_STEP_MS);
+    moveJoint(J_BASE, c - GESTURE_DEG, GESTURE_STEP_MS);
   }
-  moveJoint(BASE, c, GESTURE_STEP_MS);
+  moveJoint(J_BASE, c, GESTURE_STEP_MS);
 }
 
-// BOX: trace the four corners of a square with yaw and pitch together.
-void gestureBox() {
+void gestureBox() {   // square traced with base and second arm
   Serial.println(F("[gesture] BOX"));
-  uint8_t pj = pitchJoint();
-  int cb = current[BASE], cp = current[pj];
-  const int8_t corners[5][2] = {{-1, 1}, {1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
+  float cb = cur.a[J_BASE], ce = cur.a[J_ELBOW];
+  const int8_t k[5][2] = {{-1, 1}, {1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
   for (uint8_t i = 0; i < 5; i++) {
-    Pose p;
-    for (uint8_t k = 0; k < 4; k++) p.a[k] = current[k];
-    p.a[BASE] = constrain(cb + corners[i][0] * GESTURE_YAW_DEG, SERVO_MIN[BASE], SERVO_MAX[BASE]);
-    p.a[pj]   = constrain(cp + corners[i][1] * GESTURE_PITCH_DEG, SERVO_MIN[pj], SERVO_MAX[pj]);
+    Pose p = cur;
+    p.a[J_BASE] = cb + k[i][0] * GESTURE_DEG;
+    p.a[J_ELBOW] = ce + k[i][1] * GESTURE_DEG;
     moveTo(p, GESTURE_STEP_MS * 2);
   }
-  Pose back;
-  for (uint8_t k = 0; k < 4; k++) back.a[k] = current[k];
-  back.a[BASE] = cb;
-  back.a[pj] = cp;
+  Pose back = cur;
+  back.a[J_BASE] = cb;
+  back.a[J_ELBOW] = ce;
   moveTo(back, GESTURE_STEP_MS * 2);
 }
 
 // ======================================================================
-// ULTRASONIC (Task 1)
+// ULTRASONIC
 // ======================================================================
-// One ping in cm, or -1 if no echo came back in time.
 float pingCm() {
   digitalWrite(PIN_US_TRIG, LOW);
   delayMicroseconds(2);
@@ -300,21 +365,20 @@ float pingCm() {
   delayMicroseconds(10);
   digitalWrite(PIN_US_TRIG, LOW);
   unsigned long us = pulseIn(PIN_US_ECHO, HIGH, US_TIMEOUT_US);
-  if (us == 0) return -1;
-  return us * 0.0343 / 2.0;
+  return us == 0 ? -1 : us * 0.0343 / 2.0;
 }
 
-// Median of several pings. Invalid pings are dropped. Returns -1 if all failed.
+// Median of several pings, -1 if none came back.
 float readDistanceCm() {
   float v[US_SAMPLES];
   uint8_t n = 0;
   for (uint8_t i = 0; i < US_SAMPLES; i++) {
     float d = pingCm();
     if (d > 0) v[n++] = d;
-    delay(30);  // let echoes die out between pings
+    delay(30);
   }
   if (n == 0) return -1;
-  for (uint8_t i = 1; i < n; i++) {  // insertion sort, n is tiny
+  for (uint8_t i = 1; i < n; i++) {
     float x = v[i];
     int8_t k = i - 1;
     while (k >= 0 && v[k] > x) { v[k + 1] = v[k]; k--; }
@@ -323,12 +387,10 @@ float readDistanceCm() {
   return v[n / 2];
 }
 
-bool objectPresent(float d) {
-  return d >= US_DETECT_MIN_CM && d <= US_DETECT_MAX_CM;
-}
+bool objectPresent(float d) { return d >= US_DETECT_MIN_CM && d <= US_DETECT_MAX_CM; }
 
 // ======================================================================
-// COLOUR (Task 2)
+// COLOUR
 // ======================================================================
 void setColourLed(char c) {
   digitalWrite(PIN_LED_RED,   c == 'R');
@@ -342,52 +404,49 @@ float dist2(const float a[3], const float b[3]) {
   return s;
 }
 
-// Returns 'R', 'G' or 'B'. Always returns a colour so an LED is always lit.
+// Always returns R, G or B, so an LED is always lit.
 char readColour() {
-  if (!tcsOk) {
-    Serial.println(F("[colour] sensor missing, default R"));
-    return 'R';
-  }
-  digitalWrite(PIN_TCS_LED, HIGH);
-  delay(100);
+  if (!tcsOk) { Serial.println(F("[colour] sensor missing, default R")); return 'R'; }
   uint32_t r = 0, g = 0, b = 0, c = 0;
   for (uint8_t i = 0; i < COLOUR_SAMPLES; i++) {
     uint16_t rr, gg, bb, cc;
-    tcs.getRawData(&rr, &gg, &bb, &cc);  // blocks for one integration period
+    tcs.getRawData(&rr, &gg, &bb, &cc);
     r += rr; g += gg; b += bb; c += cc;
   }
-  digitalWrite(PIN_TCS_LED, LOW);
   r /= COLOUR_SAMPLES; g /= COLOUR_SAMPLES; b /= COLOUR_SAMPLES; c /= COLOUR_SAMPLES;
-
-  Serial.print(F("[colour] raw r g b c = "));
-  Serial.print(r); Serial.print(' ');
-  Serial.print(g); Serial.print(' ');
-  Serial.print(b); Serial.print(' ');
-  Serial.println(c);
-
   float sum = r + g + b;
+  Serial.print(F("[colour] raw r ")); Serial.print(r);
+  Serial.print(F(" g ")); Serial.print(g);
+  Serial.print(F(" b ")); Serial.print(b);
+  Serial.print(F(" clear ")); Serial.println(c);
   if (c < COLOUR_MIN_CLEAR || sum == 0) {
-    // Too dark to classify properly: fall back to the strongest channel.
     Serial.println(F("[colour] weak reading, using strongest channel"));
     if (r >= g && r >= b) return 'R';
     return g >= b ? 'G' : 'B';
   }
   float n[3] = {r / sum, g / sum, b / sum};
+  Serial.print(F("[colour] normalised ")); Serial.print(n[0], 3); Serial.print(' ');
+  Serial.print(n[1], 3); Serial.print(' '); Serial.println(n[2], 3);
   float dr = dist2(n, REF_RED), dg = dist2(n, REF_GREEN), db = dist2(n, REF_BLUE);
   if (dr <= dg && dr <= db) return 'R';
   return dg <= db ? 'G' : 'B';
 }
 
+const __FlashStringHelper *colourName(char c) {
+  if (c == 'R') return F("RED");
+  if (c == 'G') return F("GREEN");
+  if (c == 'B') return F("BLUE");
+  return F("none");
+}
+
 // ======================================================================
-// SOUND (Task 3)
+// SOUND
 // ======================================================================
-// Waits up to SOUND_TIMEOUT_MS for an impulse. Returns the peak to peak
-// amplitude in ADC counts, or -1 if nothing loud enough was heard.
+// Peak to peak amplitude of the first tap within the timeout, or -1.
 int captureSound() {
   long sum = 0;
   for (uint8_t i = 0; i < 64; i++) sum += analogRead(PIN_SOUND);
   int baseline = sum / 64;
-
   unsigned long deadline = millis() + SOUND_TIMEOUT_MS;
   while ((long)(deadline - millis()) > 0) {
     int v = analogRead(PIN_SOUND);
@@ -399,23 +458,14 @@ int captureSound() {
         if (s < lo) lo = s;
         if (s > hi) hi = s;
       }
-      // Peak to peak, but at least the trigger deviation from baseline.
-      int amp = max(hi - lo, abs(v - baseline));
-      return amp;
+      return max(hi - lo, abs(v - baseline));
     }
   }
   return -1;
 }
 
-// Linear interpolation between two poses, f from 0 to 1.
-Pose lerpPose(const Pose &a, const Pose &b, float f) {
-  Pose p;
-  for (uint8_t j = 0; j < 4; j++) p.a[j] = a.a[j] + (int)round((b.a[j] - a.a[j]) * f);
-  return p;
-}
-
 // ======================================================================
-// MORSE (Task 4)
+// MORSE
 // ======================================================================
 struct MorseChar { char letter; const char *code; };
 const MorseChar MORSE[] = {
@@ -428,48 +478,42 @@ const MorseChar MORSE[] = {
 };
 
 const char *morseFor(char c) {
-  for (uint8_t i = 0; i < sizeof(MORSE) / sizeof(MORSE[0]); i++) {
+  for (uint8_t i = 0; i < sizeof(MORSE) / sizeof(MORSE[0]); i++)
     if (MORSE[i].letter == c) return MORSE[i].code;
-  }
   return nullptr;
 }
 
-// Snap straight to a pose with no easing. Used for button presses so the
-// contact time matches the commanded time as closely as possible.
-void snapTo(const Pose &p) {
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) writeJoint(j, p.a[j]);
-}
+Pose pressPose, hoverPose;
 
+// Snap (no easing) so the contact time matches the commanded time.
 void pressFor(uint16_t ms) {
-  snapTo(POSE_E_PRESS);
+  writePose(pressPose);
   digitalWrite(PIN_STATUS, HIGH);
   delay(max(0, (int)ms + PRESS_EXTRA_MS));
-  snapTo(POSE_E_HOVER);
+  writePose(hoverPose);
   digitalWrite(PIN_STATUS, LOW);
 }
 
 void sendMorseWord(const char *word) {
-  Serial.print(F("[morse] sending "));
-  Serial.println(word);
+  Serial.print(F("[morse] word ")); Serial.println(word);
   for (uint8_t i = 0; word[i]; i++) {
     const char *code = morseFor(word[i]);
-    if (!code) continue;  // skip anything that is not A to Z
-    Serial.print(F("[morse] "));
-    Serial.print(word[i]);
-    Serial.print(' ');
-    Serial.println(code);
+    if (!code) continue;
+    Serial.print(F("[morse] ")); Serial.print(word[i]); Serial.print(F("  "));
     for (uint8_t k = 0; code[k]; k++) {
+      Serial.print(code[k] == '.' ? F("dot ") : F("DASH "));
       pressFor(code[k] == '.' ? MORSE_UNIT_MS : 3 * MORSE_UNIT_MS);
-      if (code[k + 1]) delay(MORSE_UNIT_MS);   // gap inside a letter
+      if (code[k + 1]) delay(MORSE_UNIT_MS);
     }
-    if (word[i + 1]) delay(3 * MORSE_UNIT_MS); // gap between letters
+    Serial.println();
+    if (word[i + 1]) delay(3 * MORSE_UNIT_MS);
   }
-  // The receiver ends the word after a long silence, so just wait here.
-  delay(8 * MORSE_UNIT_MS);
+  delay(8 * MORSE_UNIT_MS);   // receiver ends the word after the silence
+  Serial.print(F("[morse] sent ")); Serial.println(word);
 }
 
 // ======================================================================
-// TARGET WORD (EEPROM and Serial Monitor)
+// WORD (EEPROM and Serial Monitor)
 // ======================================================================
 bool validWord(const char *w) {
   for (uint8_t i = 0; i < 3; i++) if (w[i] < 'A' || w[i] > 'Z') return false;
@@ -482,29 +526,26 @@ void loadWord() {
   if (!validWord(targetWord)) strcpy(targetWord, DEFAULT_WORD);
 }
 
-// Gives WORD_WINDOW_MS to type a word in the Serial Monitor before the run.
-void askForWord() {
-  Serial.print(F("Word is "));
-  Serial.print(targetWord);
-  Serial.print(F(". Type a new 3 letter word within "));
-  Serial.print(WORD_WINDOW_MS / 1000);
-  Serial.println(F(" s to change it."));
+// Hold the zero pose for ZERO_HOLD_MS. Any 3 letter word typed in that
+// time becomes the target word.
+void holdZeroAndReadWord() {
+  Serial.print(F("[zero] holding all joints at 0 for "));
+  Serial.print(ZERO_HOLD_MS / 1000);
+  Serial.println(F(" s"));
+  Serial.print(F("[word] current word ")); Serial.print(targetWord);
+  Serial.println(F(". Type a new 3 letter word now to change it."));
   char buf[8];
   uint8_t n = 0;
-  unsigned long deadline = millis() + WORD_WINDOW_MS;
-  while ((long)(deadline - millis()) > 0) {
+  unsigned long start = millis();
+  while (millis() - start < ZERO_HOLD_MS) {
     if (!Serial.available()) continue;
     char c = toupper(Serial.read());
     if (c == '\n' || c == '\r') {
-      if (n == 3) {
-        buf[3] = '\0';
-        if (validWord(buf)) {
-          strcpy(targetWord, buf);
-          for (uint8_t i = 0; i < 3; i++) EEPROM.update(i, targetWord[i]);
-          Serial.print(F("Saved word "));
-          Serial.println(targetWord);
-          return;
-        }
+      buf[min(n, (uint8_t)7)] = '\0';
+      if (n == 3 && validWord(buf)) {
+        strcpy(targetWord, buf);
+        for (uint8_t i = 0; i < 3; i++) EEPROM.update(i, targetWord[i]);
+        Serial.print(F("[word] saved ")); Serial.println(targetWord);
       }
       n = 0;
     } else if (n < 7) {
@@ -517,107 +558,124 @@ void askForWord() {
 // TASKS
 // ======================================================================
 void task1() {
-  Serial.println(F("=== Task 1: Points A and B ==="));
-  goToStation(POSE_A, "A");
-  float dA = readDistanceCm();
-  resultA = objectPresent(dA);
-  Serial.print(F("[A] distance cm = ")); Serial.print(dA);
-  Serial.println(resultA ? F("  object") : F("  empty"));
+  Serial.println(F("\n=== TASK 1: Points A and B (ultrasonic) ==="));
+  goToStation(ST_A);
+  distA = readDistanceCm();
+  resultA = objectPresent(distA);
+  Serial.print(F("[A] distance ")); Serial.print(distA, 1);
+  Serial.println(resultA ? F(" cm -> OBJECT") : F(" cm -> empty"));
   if (resultA) gestureYes();
 
-  goToStation(POSE_B, "B");
-  float dB = readDistanceCm();
-  resultB = objectPresent(dB);
-  Serial.print(F("[B] distance cm = ")); Serial.print(dB);
-  Serial.println(resultB ? F("  object") : F("  empty"));
+  goToStation(ST_B);
+  distB = readDistanceCm();
+  resultB = objectPresent(distB);
+  Serial.print(F("[B] distance ")); Serial.print(distB, 1);
+  Serial.println(resultB ? F(" cm -> OBJECT") : F(" cm -> empty"));
   if (resultB) gestureNo();
 
   if (!resultA && !resultB) gestureBox();
 }
 
 void task2() {
-  Serial.println(F("=== Task 2: Point C ==="));
-  goToStation(POSE_C, "C");
+  Serial.println(F("\n=== TASK 2: Point C (colour) ==="));
+  goToStation(ST_C);
   resultColour = readColour();
-  Serial.print(F("[C] colour = "));
-  Serial.println(resultColour);
-  setColourLed(resultColour);  // stays lit for the rest of the run
+  Serial.print(F("[C] colour -> ")); Serial.println(colourName(resultColour));
+  setColourLed(resultColour);   // stays lit to the end of the run
 }
 
 void task3() {
-  Serial.println(F("=== Task 3: Point D ==="));
-  goToStation(POSE_D, "D");
-  Serial.println(F("[D] listening"));
+  Serial.println(F("\n=== TASK 3: Point D (sound) ==="));
+  goToStation(ST_D);
+  Serial.println(F("[D] listening for a tap (3 s)"));
   digitalWrite(PIN_STATUS, HIGH);
   resultSound = captureSound();
   digitalWrite(PIN_STATUS, LOW);
 
-  float f = 0;  // no sound: point at the bottom of the scale
+  float f = 0;
   if (resultSound >= 0) {
     f = (float)(resultSound - (int)SOUND_AMP_MIN) / (SOUND_AMP_MAX - SOUND_AMP_MIN);
     f = constrain(f, 0.0, 1.0);
   }
-  Serial.print(F("[D] amplitude = ")); Serial.print(resultSound);
-  Serial.print(F("  level = ")); Serial.print((int)(f * 100)); Serial.println('%');
+  resultLevel = (int)(f * 100);
+  Serial.print(F("[D] amplitude ")); Serial.print(resultSound);
+  Serial.print(F(" -> level ")); Serial.print(resultLevel); Serial.println('%');
 
-  // The indicator is close to D, so slide there without the travel lift.
-  moveTo(lerpPose(POSE_D_LOW, POSE_D_HIGH, f), MOVE_MS);
+  float zPoint = IND_Z_LOW + f * (IND_Z_HIGH - IND_Z_LOW);
+  Station ind = {"indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {0, 0, 0}};
+  Pose p;
+  if (stationPose(ind, p)) {
+    moveTo(p, MOVE_MS);   // indicator is next to D, no travel lift needed
+    printPosition("indicator");
+  }
+  Serial.print(F("[D] pointing at height ")); Serial.print(zPoint, 0); Serial.println(F(" mm"));
   delay(SOUND_HOLD_MS);
 }
 
 void task4() {
-  Serial.println(F("=== Task 4: Point E ==="));
-  goToStation(POSE_E_HOVER, "E");
+  Serial.println(F("\n=== TASK 4: Point E (Morse) ==="));
+  if (!stationPose(ST_E_HOVER, hoverPose) || !stationPose(ST_E_PRESS, pressPose)) {
+    Serial.println(F("[E] cannot reach, skipping"));
+    return;
+  }
+  goToPose(hoverPose, "E hover");
   sendMorseWord(targetWord);
 }
 
 void printSummary() {
-  Serial.println(F("=== Run complete ==="));
-  Serial.print(F("A object: ")); Serial.println(resultA ? F("yes") : F("no"));
-  Serial.print(F("B object: ")); Serial.println(resultB ? F("yes") : F("no"));
-  Serial.print(F("C colour: ")); Serial.println(resultColour);
-  Serial.print(F("D amplitude: ")); Serial.println(resultSound);
+  Serial.println(F("\n=========== RUN SUMMARY ==========="));
+  Serial.print(F("A: ")); Serial.print(resultA ? F("object") : F("empty"));
+  Serial.print(F(" (")); Serial.print(distA, 1); Serial.println(F(" cm)"));
+  Serial.print(F("B: ")); Serial.print(resultB ? F("object") : F("empty"));
+  Serial.print(F(" (")); Serial.print(distB, 1); Serial.println(F(" cm)"));
+  Serial.print(F("Gesture: "));
+  if (resultA && resultB) Serial.println(F("YES then NO"));
+  else if (resultA) Serial.println(F("YES"));
+  else if (resultB) Serial.println(F("NO"));
+  else Serial.println(F("BOX"));
+  Serial.print(F("C colour: ")); Serial.println(colourName(resultColour));
+  Serial.print(F("D sound: amplitude ")); Serial.print(resultSound);
+  Serial.print(F(", level ")); Serial.print(resultLevel); Serial.println('%');
   Serial.print(F("E word: ")); Serial.println(targetWord);
+  Serial.println(F("===================================="));
   Serial.println(F("Press reset to run again."));
 }
 
 // ======================================================================
-// SETUP AND MAIN LOOP
+// SETUP AND LOOP
 // ======================================================================
 void setup() {
   Serial.begin(115200);
-
   pinMode(PIN_US_TRIG, OUTPUT);
   pinMode(PIN_US_ECHO, INPUT);
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_BLUE, OUTPUT);
-  pinMode(PIN_TCS_LED, OUTPUT);
   pinMode(PIN_STATUS, OUTPUT);
   setColourLed('-');
 
-  // Write the home angle before attach so the servos do not jump to 90 first.
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) {
-    servos[j].write(POSE_HOME.a[j]);
-    servos[j].attach(SERVO_PINS[j]);
-    current[j] = POSE_HOME.a[j];
-  }
+  // Write zero before attaching so nothing jumps on power up.
+  writePose(ZERO_POSE);
+  sBase.attach(PIN_BASE);
+  sLeft.attach(PIN_MAIN_LEFT);
+  sRight.attach(PIN_MAIN_RIGHT);
+  sElbow.attach(PIN_ELBOW);
+  writePose(ZERO_POSE);
 
+  Serial.println(F("\nGroup 21 robotic arm, demonstration"));
   tcsOk = tcs.begin();
-  Serial.println(tcsOk ? F("TCS34725 found") : F("TCS34725 NOT found, Task 2 will use a default"));
+  Serial.println(tcsOk ? F("[init] colour sensor found") : F("[init] colour sensor NOT found, Task 2 will default"));
 
   loadWord();
-  askForWord();
-  Serial.print(F("Target word: "));
-  Serial.println(targetWord);
-  delay(START_DELAY_MS);
+  printPosition("zero");
+  holdZeroAndReadWord();
+  Serial.print(F("[word] target word ")); Serial.println(targetWord);
 }
 
 void loop() {
   switch (state) {
     case ST_START:
-      Serial.println(F("=== Run start ==="));
-      moveTo(POSE_HOME, MOVE_MS);
+      Serial.println(F("\n=== RUN START ==="));
       state = ST_TASK1;
       break;
     case ST_TASK1:
@@ -637,12 +695,11 @@ void loop() {
       state = ST_FINISH;
       break;
     case ST_FINISH:
-      goToStation(POSE_HOME, "HOME");
+      goToPose(ZERO_POSE, "zero");
       printSummary();
       state = ST_IDLE;
       break;
     case ST_IDLE:
-      // Slow blink so the tutors can see the run has finished.
       digitalWrite(PIN_STATUS, (millis() / 500) % 2);
       break;
   }

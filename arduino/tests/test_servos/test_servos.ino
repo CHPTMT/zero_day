@@ -1,140 +1,123 @@
 /*
- * TEST: servos, gestures and pose teaching (arm controller Uno)
+ * TEST: all servos (Group 21 arm)
  *
- * Use this to check every servo moves, find safe limits, and teach the
- * station poses. Open the Serial Monitor at 115200 baud, line ending
- * "Newline", and type commands:
+ * 1. Moves every joint to relative 0 and holds for 5 s:
+ *      base facing forward, main arm upright, second arm level.
+ *    If any joint is not at that position, change its SERVO_ZERO_xxx value.
+ * 2. Small direction check: each joint moves +10 then back. Base should turn
+ *    LEFT, main arm should lean FORWARD, second arm should tilt UP. If one goes
+ *    the other way, flip its xxx_DIR.
+ * 3. Full sweep of each joint through its whole allowed range:
+ *      base -90 to +90, main arm -15 to +50, second arm -90 to +45.
+ *    The two main arm servos always move in opposite directions.
+ * 4. Then manual control from the Serial Monitor (115200, Newline):
+ *      b30   base to +30        m20   main arm to +20     e-40   2nd arm to -40
+ *      b+    nudge base +1      m-    nudge main -1
+ *      b++   nudge base +5      e--   nudge 2nd -5
+ *      z     back to zero       s     repeat the sweep    p     print angles
  *
- *   s              sweep each servo slowly through 60..120 deg, one at a time
- *   b90            set base to 90 deg       (b = base)
- *   m120           set main arm to 120 deg  (m = shoulder / main arm)
- *   e80            set second arm to 80 deg (e = elbow / second arm)
- *   w90            set wrist to 90 deg      (w = wrist, only if USE_WRIST)
- *   b+ / b-        nudge base by +1 / -1 deg (works for m, e, w too)
- *   b+5 / m-3      nudge by any amount
- *   p NAME         print the current pose as a line to paste into
- *                  arm_controller.ino, e.g. "p POSE_A"
- *   h              go to home (90 on every joint)
- *   y / n / x      YES, NO and BOX gestures at the current pose
- *
- * Teaching a station: jog the arm until the sensor is where it must be,
- * then type "p POSE_C" and paste the printed line into arm_controller.ino.
- *
- * Pins match arm_controller.ino. Power the servos from an external 5 V
- * supply with a common ground.
+ * Pins: base D2, main left D3, main right D4, second arm D5.
+ * Copy any changed SERVO_ZERO and DIR values into arm_controller.ino.
  */
 
 #include <Servo.h>
 
-#define USE_WRIST 0
-#if USE_WRIST
-const uint8_t NUM_SERVOS = 4;
-#else
-const uint8_t NUM_SERVOS = 3;
-#endif
+const uint8_t PIN_BASE = 2, PIN_MAIN_LEFT = 3, PIN_MAIN_RIGHT = 4, PIN_ELBOW = 5;
 
-const uint8_t SERVO_PINS[4] = {3, 5, 6, 9};          // base, shoulder, elbow, wrist
-const char    SERVO_KEYS[4] = {'b', 'm', 'e', 'w'};
-const char   *SERVO_NAMES[4] = {"base", "main arm", "second arm", "wrist"};
-const uint8_t SERVO_MIN[4] = {0, 10, 0, 0};          // same limits as arm_controller.ino
-const uint8_t SERVO_MAX[4] = {180, 170, 180, 180};
+const int SERVO_ZERO_BASE  = 90;
+const int SERVO_ZERO_LEFT  = 90;
+const int SERVO_ZERO_RIGHT = 90;
+const int SERVO_ZERO_ELBOW = 90;
+const int8_t BASE_DIR = 1, MAIN_DIR = 1, ELBOW_DIR = 1;
 
-const uint8_t GESTURE_DEG = 15;
+enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
+const float REL_MIN[NJ] = {-90, -15, -90};
+const float REL_MAX[NJ] = { 90,  50,  45};
+const char *NAMES[NJ] = {"base", "main arm", "2nd arm"};
+const char KEYS[NJ] = {'b', 'm', 'e'};
 
-Servo servos[4];
-int current[4] = {90, 90, 90, 90};
+Servo sBase, sLeft, sRight, sElbow;
+float cur[NJ] = {0, 0, 0};
 
-void writeJoint(uint8_t j, int a) {
-  a = constrain(a, SERVO_MIN[j], SERVO_MAX[j]);
-  servos[j].write(a);
-  current[j] = a;
-}
+int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
 
-// Smooth move of one joint, 1 deg every 15 ms.
-void glide(uint8_t j, int target) {
-  target = constrain(target, SERVO_MIN[j], SERVO_MAX[j]);
-  while (current[j] != target) {
-    writeJoint(j, current[j] + (target > current[j] ? 1 : -1));
-    delay(15);
+void writeJoint(uint8_t j, float rel) {
+  rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
+  cur[j] = rel;
+  if (j == J_BASE) {
+    sBase.write(rawClamp(SERVO_ZERO_BASE + BASE_DIR * rel));
+  } else if (j == J_MAIN) {
+    sLeft.write(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * rel));
+    sRight.write(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+  } else {
+    sElbow.write(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
   }
 }
 
-void printPose(const char *name) {
-  Serial.print(F("Pose "));
-  Serial.print(name);
-  Serial.print(F(" = {{"));
-  for (uint8_t j = 0; j < 4; j++) {
-    Serial.print(j < NUM_SERVOS ? current[j] : 90);
-    if (j < 3) Serial.print(F(", "));
+// One degree every 20 ms, so the sweep is slow and safe.
+void glide(uint8_t j, float target) {
+  target = constrain(target, REL_MIN[j], REL_MAX[j]);
+  while (fabs(cur[j] - target) > 0.5) {
+    writeJoint(j, cur[j] + (target > cur[j] ? 1 : -1));
+    delay(20);
   }
-  Serial.println(F("}};"));
+  writeJoint(j, target);
 }
 
-void printAll() {
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) {
-    Serial.print(SERVO_NAMES[j]);
-    Serial.print('=');
-    Serial.print(current[j]);
-    Serial.print(F("  "));
+void printAngles() {
+  Serial.print(F("[pos] base ")); Serial.print(cur[J_BASE], 0);
+  Serial.print(F("  main ")); Serial.print(cur[J_MAIN], 0);
+  Serial.print(F(" (L raw ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * cur[J_MAIN]));
+  Serial.print(F(", R raw ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * cur[J_MAIN]));
+  Serial.print(F(")  2nd ")); Serial.println(cur[J_ELBOW], 0);
+}
+
+void goZero() {
+  for (uint8_t j = 0; j < NJ; j++) glide(j, 0);
+  printAngles();
+}
+
+void directionCheck() {
+  Serial.println(F("\n--- Direction check: +10 on each joint ---"));
+  const char *expect[NJ] = {"should turn LEFT", "should lean FORWARD", "should tilt UP"};
+  for (uint8_t j = 0; j < NJ; j++) {
+    Serial.print(NAMES[j]); Serial.print(F(" +10, ")); Serial.println(expect[j]);
+    glide(j, 10);
+    delay(1500);
+    glide(j, 0);
+    delay(500);
   }
-  Serial.println();
 }
 
 void sweepAll() {
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) {
-    Serial.print(F("Sweeping "));
-    Serial.println(SERVO_NAMES[j]);
-    int start = current[j];
-    glide(j, 60);
-    glide(j, 120);
-    glide(j, start);
-    delay(300);
+  Serial.println(F("\n--- Full sweep of every joint ---"));
+  for (uint8_t j = 0; j < NJ; j++) {
+    Serial.print(F("Sweeping ")); Serial.print(NAMES[j]);
+    Serial.print(F(" from ")); Serial.print(REL_MIN[j], 0);
+    Serial.print(F(" to ")); Serial.println(REL_MAX[j], 0);
+    glide(j, REL_MIN[j]); printAngles(); delay(800);
+    glide(j, REL_MAX[j]); printAngles(); delay(800);
+    glide(j, 0);          printAngles(); delay(500);
   }
-  Serial.println(F("Sweep done"));
-}
-
-uint8_t pitchJoint() { return USE_WRIST ? 3 : 2; }
-
-void gesture(char g) {
-  uint8_t p = pitchJoint();
-  int cb = current[0], cp = current[p];
-  if (g == 'y') {
-    for (uint8_t i = 0; i < 3; i++) { glide(p, cp + GESTURE_DEG); glide(p, cp - GESTURE_DEG); }
-    glide(p, cp);
-  } else if (g == 'n') {
-    for (uint8_t i = 0; i < 3; i++) { glide(0, cb + GESTURE_DEG); glide(0, cb - GESTURE_DEG); }
-    glide(0, cb);
-  } else {
-    glide(0, cb - GESTURE_DEG); glide(p, cp + GESTURE_DEG);
-    glide(0, cb + GESTURE_DEG); glide(p, cp - GESTURE_DEG);
-    glide(0, cb - GESTURE_DEG); glide(p, cp + GESTURE_DEG);
-    glide(0, cb); glide(p, cp);
-  }
+  Serial.println(F("Sweep done. Manual control ready: b30, m-10, e+, b++, z, s, p"));
 }
 
 void handle(String cmd) {
   cmd.trim();
   if (cmd.length() == 0) return;
-  char c = cmd.charAt(0);
-
+  char c = tolower(cmd.charAt(0));
+  if (c == 'z') { goZero(); return; }
   if (c == 's') { sweepAll(); return; }
-  if (c == 'h') { for (uint8_t j = 0; j < NUM_SERVOS; j++) glide(j, 90); printAll(); return; }
-  if (c == 'y' || c == 'n' || c == 'x') { gesture(c); return; }
-  if (c == 'p') {
-    String name = cmd.length() > 2 ? cmd.substring(2) : String("POSE_X");
-    name.trim();
-    printPose(name.c_str());
-    return;
-  }
-
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) {
-    if (c != SERVO_KEYS[j]) continue;
+  if (c == 'p') { printAngles(); return; }
+  for (uint8_t j = 0; j < NJ; j++) {
+    if (c != KEYS[j]) continue;
     String rest = cmd.substring(1);
-    if (rest == "+") glide(j, current[j] + 1);
-    else if (rest == "-") glide(j, current[j] - 1);
-    else if (rest.startsWith("+") || rest.startsWith("-")) glide(j, current[j] + rest.toInt());
-    else glide(j, rest.toInt());
-    printAll();
+    if (rest == "+") glide(j, cur[j] + 1);
+    else if (rest == "-") glide(j, cur[j] - 1);
+    else if (rest == "++") glide(j, cur[j] + 5);
+    else if (rest == "--") glide(j, cur[j] - 5);
+    else glide(j, rest.toInt());   // absolute angle, e.g. 30 or -40
+    printAngles();
     return;
   }
   Serial.println(F("Unknown command"));
@@ -142,12 +125,20 @@ void handle(String cmd) {
 
 void setup() {
   Serial.begin(115200);
-  for (uint8_t j = 0; j < NUM_SERVOS; j++) {
-    servos[j].write(current[j]);
-    servos[j].attach(SERVO_PINS[j]);
-  }
-  Serial.println(F("Servo test ready. Commands: s, h, b90, m+5, e-, p POSE_A, y, n, x"));
-  printAll();
+  for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
+  sBase.attach(PIN_BASE);
+  sLeft.attach(PIN_MAIN_LEFT);
+  sRight.attach(PIN_MAIN_RIGHT);
+  sElbow.attach(PIN_ELBOW);
+  for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
+
+  Serial.println(F("\n=== SERVO TEST ==="));
+  Serial.println(F("All joints at ZERO for 5 s: base forward, main arm upright, 2nd arm level"));
+  printAngles();
+  delay(5000);
+
+  directionCheck();
+  sweepAll();
 }
 
 void loop() {
