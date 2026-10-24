@@ -22,7 +22,7 @@ Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 60 mm abo
 
 | Joint | Zero | Range |
 |---|---|---|
-| Base (D2) | facing forward | -90 (right) to +90 (left) |
+| Base (D2) | facing forward | +90 (left, towards A and B) to -90 (right, towards E) |
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
 | Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
 

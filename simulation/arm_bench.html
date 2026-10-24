@@ -162,7 +162,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       <div class="panel">
         <h2>Plan view</h2>
         <svg id="planView" viewBox="0 0 640 350" role="img" aria-label="Top view of the half circle workspace with the stations"></svg>
-        <p class="cap">400 mm half circle from the brief. The bold line is where the arm faces. Black dot: ultrasonic. Red: colour sensor, 45 mm to your right facing the machine. Blue: sound sensor, 45 mm to your left.</p>
+        <p class="cap">400 mm half circle from the brief, seen from behind the arm as on the base map: A and B on the left, E on the right. The bold line is where the arm faces. Black dot: ultrasonic. Red: colour sensor, 45 mm to your right facing the machine. Blue: sound sensor, 45 mm to your left.</p>
       </div>
     </div>
 
@@ -187,7 +187,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       <div class="panel">
         <p class="group-h">Joints (relative degrees, 0 = zero pose)</p>
         <div class="ctl">
-          <label for="jBase">Base<small>-90 right to +90 left, 0 forward</small></label>
+          <label for="jBase">Base<small>+90 left towards A and B, -90 right towards E</small></label>
           <span class="val" id="vBase">0</span>
           <input id="jBase" type="range" min="-90" max="90" step="1" value="0">
         </div>
@@ -345,7 +345,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var phi = p[1] * RAD, psi = (p[2] - p[1]) * RAD, a = L2 + t.along;
     var rin = L1 * Math.sin(phi) + a * Math.cos(psi) + t.down * Math.sin(psi);
     var z = SH + L1 * Math.cos(phi) + a * Math.sin(psi) - t.down * Math.cos(psi);
-    return { rin: rin, z: z, r: Math.hypot(rin, t.side), theta: p[0] + 90 + Math.atan2(t.side, rin) / RAD };
+    return { rin: rin, z: z, r: Math.hypot(rin, t.side), theta: 90 - p[0] - Math.atan2(t.side, rin) / RAD };
   }
 
   function fk(p) {
@@ -355,7 +355,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var am = L2 + TOOLS.PUSH.along;
     var mx = ex + am * Math.cos(psi), mz = ez + am * Math.sin(psi);
     var us = toolPt(p, TOOLS.US), rgb = toolPt(p, TOOLS.RGB), snd = toolPt(p, TOOLS.SND), pu = toolPt(p, TOOLS.PUSH);
-    return { theta: p[0] + 90, ex: ex, ez: ez, wx: wx, wz: wz, psi: psi, r: us.rin, z: us.z,
+    return { theta: 90 - p[0], ex: ex, ez: ez, wx: wx, wz: wz, psi: psi, r: us.rin, z: us.z,
              mx: mx, mz: mz, px: pu.rin, pz: pu.z, us: us, rgb: rgb, snd: snd, pu: pu };
   }
 
@@ -364,7 +364,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var t = st.tool || TOOLS.US, a = L2 + t.along, l2 = Math.hypot(a, t.down), delta = Math.atan2(t.down, a);
     if (st.r <= Math.abs(t.side)) return null;
     var rin = Math.sqrt(st.r * st.r - t.side * t.side);
-    var base = st.theta - Math.atan2(t.side, rin) / RAD - 90, psi = 0, out = null;
+    var base = 90 - st.theta - Math.atan2(t.side, rin) / RAD, psi = 0, out = null;
     for (var it = 0; it < 6; it++) {
       var ax = t.press ? Math.sin(psi) : Math.cos(psi), az = t.press ? -Math.cos(psi) : Math.sin(psi);
       var tr = rin - ax * st.s, tz = st.z - az * st.s, dz = tz - SH, D = Math.hypot(tr, dz);
@@ -463,13 +463,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
 
   var pcx = 320, pcy = 322, ps = 0.72;
-  function pp(theta, r) { return [pcx + r * ps * Math.cos(theta * RAD), pcy - r * ps * Math.sin(theta * RAD)]; }
+  // drawn as on the base map, from behind the arm: 0 deg (A, B) on the left, 180 deg (E) on the right
+  function pp(theta, r) { return [pcx - r * ps * Math.cos(theta * RAD), pcy - r * ps * Math.sin(theta * RAD)]; }
 
   function drawPlan() {
     var k = fk(cur), h = '', i, a, b;
     [100, 200, 300, 400].forEach(function (r) {
       a = pp(0, r); b = pp(180, r);
-      h += '<path d="M ' + a[0] + ' ' + a[1] + ' A ' + (r * ps) + ' ' + (r * ps) + ' 0 0 0 ' + b[0] + ' ' + b[1] + '" fill="none" stroke="' + (r === 400 ? 'var(--muted)' : 'var(--line)') + '"/>';
+      h += '<path d="M ' + a[0] + ' ' + a[1] + ' A ' + (r * ps) + ' ' + (r * ps) + ' 0 0 1 ' + b[0] + ' ' + b[1] + '" fill="none" stroke="' + (r === 400 ? 'var(--muted)' : 'var(--line)') + '"/>';
       h += '<text class="t-txt" x="' + (pcx + 4) + '" y="' + (pcy - r * ps + 12) + '">' + r + '</text>';
     });
     for (i = 0; i <= 180; i += 30) {
@@ -703,7 +704,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     anglesLine();
     await sleep(5000, id);
     log(''); log('--- Direction check: +10 on each joint ---', 'h');
-    var expect = ['should turn LEFT', 'should lean FORWARD', 'should tilt UP'];
+    var expect = ['should turn LEFT, towards A and B', 'should lean FORWARD', 'should tilt UP'];
     for (var j = 0; j < 3; j++) {
       log(JN[j] + ' +10, ' + expect[j]);
       await glide(j, 10, id); await sleep(1500, id);

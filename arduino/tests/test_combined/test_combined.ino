@@ -122,7 +122,9 @@ void toolPoint(const Pose &p, const Tool &t, float &theta, float &r, float &z) {
   float rin = LINK1_MM * sin(phi) + a * cos(psi) + t.down * sin(psi);
   z = SHOULDER_HEIGHT_MM + LINK1_MM * cos(phi) + a * sin(psi) - t.down * cos(psi);
   r = sqrt(rin * rin + t.side * t.side);
-  theta = p.a[J_BASE] + 90 + degrees(atan2(t.side, rin));
+  // Base + turns the arm left, towards A and B (low theta). A tool on the
+  // arm's left (side +) also sits at lower theta.
+  theta = 90 - p.a[J_BASE] - degrees(atan2(t.side, rin));
 }
 
 // Joint angles that put a tool `standoff` mm from the station point, facing
@@ -136,7 +138,7 @@ bool toolIK(const Station &s, Pose &out) {
   float delta = atan2(t.down, a);
   if (s.r <= fabs(t.side)) return false;
   float rin = sqrt(s.r * s.r - t.side * t.side);    // distance in the arm's plane
-  float baseRel = s.theta - degrees(atan2(t.side, rin)) - 90;
+  float baseRel = 90 - s.theta - degrees(atan2(t.side, rin));   // A and B: +80, E: -80
   float psi = 0;
   for (uint8_t it = 0; it < 6; it++) {
     float ax = t.pressDown ? sin(psi) : cos(psi);    // direction the tool points

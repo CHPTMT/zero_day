@@ -5,7 +5,7 @@
  *      base facing forward, main arm upright, second arm level.
  *    If any joint is not at that position, change its SERVO_ZERO_xxx value.
  * 2. Small direction check: each joint moves +10 then back. Base should turn
- *    LEFT, main arm should lean FORWARD, second arm should tilt UP. If one goes
+ *    LEFT (towards A and B), main arm should lean FORWARD, second arm should tilt UP. If one goes
  *    the other way, flip its xxx_DIR.
  * 3. Full sweep of each joint through its whole allowed range:
  *      base -90 to +90, main arm -15 to +50, second arm -90 to +45.
@@ -79,7 +79,7 @@ void goZero() {
 
 void directionCheck() {
   Serial.println(F("\n--- Direction check: +10 on each joint ---"));
-  const char *expect[NJ] = {"should turn LEFT", "should lean FORWARD", "should tilt UP"};
+  const char *expect[NJ] = {"should turn LEFT, towards A and B", "should lean FORWARD", "should tilt UP"};
   for (uint8_t j = 0; j < NJ; j++) {
     Serial.print(NAMES[j]); Serial.print(F(" +10, ")); Serial.println(expect[j]);
     glide(j, 10);
