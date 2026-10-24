@@ -198,6 +198,11 @@ void printColour() {
   Serial.print('/'); Serial.print(b); Serial.print(F(" clear ")); Serial.print(c);
   Serial.print(F("  normalised ")); Serial.print(r / s, 2); Serial.print(' ');
   Serial.print(g / s, 2); Serial.print(' '); Serial.println(b / s, 2);
+  Serial.print(F("[C] temp ")); Serial.print(tcs.calculateColorTemperature_dn40(r, g, b, c));
+  Serial.print(F(" K  lux ")); Serial.print(tcs.calculateLux(r, g, b));
+  Serial.print(F("  primary "));
+  if (r >= g && r >= b) Serial.println(F("RED"));
+  else Serial.println(g >= b ? F("GREEN") : F("BLUE"));
 }
 
 void printSound() {

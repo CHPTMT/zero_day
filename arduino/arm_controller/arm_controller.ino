@@ -404,6 +404,23 @@ float dist2(const float a[3], const float b[3]) {
   return s;
 }
 
+// Strongest raw channel. Shown next to the calibrated result as a cross check.
+char primaryColour(uint32_t r, uint32_t g, uint32_t b) {
+  if (r >= g && r >= b) return 'R';
+  return g >= b ? 'G' : 'B';
+}
+
+const __FlashStringHelper *colourName(char c);
+
+// Colour temperature (K), light level (lux) and strongest channel.
+void printColourExtras(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
+  uint16_t temp = tcs.calculateColorTemperature_dn40(r, g, b, c);
+  uint16_t lux = tcs.calculateLux(r, g, b);
+  Serial.print(F("[colour] temp ")); Serial.print(temp);
+  Serial.print(F(" K  lux ")); Serial.print(lux);
+  Serial.print(F("  primary ")); Serial.println(colourName(primaryColour(r, g, b)));
+}
+
 // Always returns R, G or B, so an LED is always lit.
 char readColour() {
   if (!tcsOk) { Serial.println(F("[colour] sensor missing, default R")); return 'R'; }
@@ -419,10 +436,10 @@ char readColour() {
   Serial.print(F(" g ")); Serial.print(g);
   Serial.print(F(" b ")); Serial.print(b);
   Serial.print(F(" clear ")); Serial.println(c);
+  printColourExtras(r, g, b, c);
   if (c < COLOUR_MIN_CLEAR || sum == 0) {
     Serial.println(F("[colour] weak reading, using strongest channel"));
-    if (r >= g && r >= b) return 'R';
-    return g >= b ? 'G' : 'B';
+    return primaryColour(r, g, b);
   }
   float n[3] = {r / sum, g / sum, b / sum};
   Serial.print(F("[colour] normalised ")); Serial.print(n[0], 3); Serial.print(' ');

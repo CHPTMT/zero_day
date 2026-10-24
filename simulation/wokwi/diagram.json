@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "author": "Group 21",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-arduino-uno",
+      "id": "uno",
+      "top": 180,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "base",
+      "top": -40,
+      "left": -260,
+      "attrs": {
+        "hornColor": "#2a7a5c"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "mainL",
+      "top": 40,
+      "left": -260,
+      "attrs": {
+        "hornColor": "#2a7a5c"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "mainR",
+      "top": 120,
+      "left": -260,
+      "attrs": {
+        "hornColor": "#2a7a5c"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "elbow",
+      "top": 200,
+      "left": -260,
+      "attrs": {
+        "hornColor": "#2a7a5c"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "us",
+      "top": -60,
+      "left": 120,
+      "attrs": {
+        "distance": "10"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "sound",
+      "top": 60,
+      "left": 420,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledR",
+      "top": -40,
+      "left": 440,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledG",
+      "top": -40,
+      "left": 490,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledB",
+      "top": -40,
+      "left": 540,
+      "attrs": {
+        "color": "blue"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rR",
+      "top": 20,
+      "left": 430,
+      "rotate": 90,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rG",
+      "top": 20,
+      "left": 480,
+      "rotate": 90,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rB",
+      "top": 20,
+      "left": 530,
+      "rotate": 90,
+      "attrs": {
+        "value": "220"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "base:PWM",
+      "uno:2",
+      "orange",
+      []
+    ],
+    [
+      "base:V+",
+      "uno:5V",
+      "red",
+      []
+    ],
+    [
+      "base:GND",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "mainL:PWM",
+      "uno:3",
+      "orange",
+      []
+    ],
+    [
+      "mainL:V+",
+      "uno:5V",
+      "red",
+      []
+    ],
+    [
+      "mainL:GND",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "mainR:PWM",
+      "uno:4",
+      "orange",
+      []
+    ],
+    [
+      "mainR:V+",
+      "uno:5V",
+      "red",
+      []
+    ],
+    [
+      "mainR:GND",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "elbow:PWM",
+      "uno:5",
+      "orange",
+      []
+    ],
+    [
+      "elbow:V+",
+      "uno:5V",
+      "red",
+      []
+    ],
+    [
+      "elbow:GND",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us:ECHO",
+      "uno:6",
+      "yellow",
+      []
+    ],
+    [
+      "us:TRIG",
+      "uno:7",
+      "brown",
+      []
+    ],
+    [
+      "us:VCC",
+      "uno:5V",
+      "red",
+      []
+    ],
+    [
+      "us:GND",
+      "uno:GND.2",
+      "gray",
+      []
+    ],
+    [
+      "sound:SIG",
+      "uno:A1",
+      "purple",
+      []
+    ],
+    [
+      "sound:VCC",
+      "uno:5V",
+      "red",
+      []
+    ],
+    [
+      "sound:GND",
+      "uno:GND.2",
+      "black",
+      []
+    ],
+    [
+      "ledR:A",
+      "uno:8",
+      "green",
+      []
+    ],
+    [
+      "ledR:C",
+      "rR:1",
+      "black",
+      []
+    ],
+    [
+      "rR:2",
+      "uno:GND.3",
+      "black",
+      []
+    ],
+    [
+      "ledG:A",
+      "uno:9",
+      "green",
+      []
+    ],
+    [
+      "ledG:C",
+      "rG:1",
+      "black",
+      []
+    ],
+    [
+      "rG:2",
+      "uno:GND.3",
+      "black",
+      []
+    ],
+    [
+      "ledB:A",
+      "uno:10",
+      "green",
+      []
+    ],
+    [
+      "ledB:C",
+      "rB:1",
+      "black",
+      []
+    ],
+    [
+      "rB:2",
+      "uno:GND.3",
+      "black",
+      []
+    ]
+  ]
+}

@@ -1,0 +1,976 @@
+<title>Group 21 Arm Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* Layout: two tabs. Motion = side view + plan view on the left, controls and a live serial monitor on the right. Wiring = breadboard diagram above a pin table. */
+:root {
+  --bg: #f1f5f1;
+  --surface: #fbfcfa;
+  --ink: #1b2824;
+  --muted: #56675f;
+  --line: #ccd8d1;
+  --accent: #1b6a55;
+  --accent-ink: #ffffff;
+  --tint: #dfece5;
+  --link2: #3a4a44;
+  --warn: #a8321f;
+  --term-bg: #13201b;
+  --term-ink: #cfe3d8;
+  --term-dim: #7f9b8e;
+  --board: #1d5f8c;
+  --bb: #f4f2ea;
+  --bb-hole: #c9c4b4;
+  --w-red: #c8372d;
+  --w-black: #2b2b2b;
+  --w-orange: #e07b1f;
+  --w-yellow: #d6b31b;
+  --w-brown: #7a4b24;
+  --w-purple: #7b4fb0;
+  --w-green: #2f8a3c;
+  --w-blue: #2c63c9;
+  --w-grey: #8b8f93;
+  --led-r: #e0402f;
+  --led-g: #2fb35a;
+  --led-b: #3274e0;
+  --off: #c3cfc8;
+  --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101815; --surface: #17211d; --ink: #e5eee9; --muted: #9db1a8; --line: #2b3b35;
+    --accent: #52b79c; --accent-ink: #0d1713; --tint: #1c2d27; --link2: #c4d6cd; --warn: #f0917d;
+    --term-bg: #0b120f; --term-ink: #cfe3d8; --term-dim: #6f8a7e; --board: #2a77ad; --bb: #2a302c; --bb-hole: #4a524c;
+    --w-black: #9aa39e; --off: #33433c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101815; --surface: #17211d; --ink: #e5eee9; --muted: #9db1a8; --line: #2b3b35;
+  --accent: #52b79c; --accent-ink: #0d1713; --tint: #1c2d27; --link2: #c4d6cd; --warn: #f0917d;
+  --term-bg: #0b120f; --term-ink: #cfe3d8; --term-dim: #6f8a7e; --board: #2a77ad; --bb: #2a302c; --bb-hole: #4a524c;
+  --w-black: #9aa39e; --off: #33433c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.05; margin: 0; text-wrap: balance; text-transform: uppercase; letter-spacing: 0.01em; }
+h1 { font-size: clamp(2.2rem, 7vw, 3.2rem); }
+h2 { font-size: 1.35rem; }
+h3 { font-size: 1.05rem; color: var(--muted); }
+p { margin: 0; }
+.eyebrow { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.lede { color: var(--muted); max-width: 66ch; margin-top: 8px; }
+.top { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+button, select, input { font: inherit; }
+.btn { font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.05em; text-transform: uppercase; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 7px 11px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.stop { border-color: var(--warn); color: var(--warn); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:focus-visible, select:focus-visible, input:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); }
+.tab { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 9px 16px; border: 1px solid transparent; border-bottom: 0; background: none; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+.tab[aria-selected="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.panel { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
+.motion { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.views { display: grid; gap: 16px; min-width: 0; }
+.side { display: grid; gap: 16px; min-width: 0; }
+svg { display: block; width: 100%; height: auto; }
+.cap { color: var(--muted); font-size: 0.86rem; margin-top: 6px; }
+.ctl { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding-block: 7px; border-bottom: 1px solid var(--line); }
+.ctl:last-of-type { border-bottom: 0; }
+.ctl label { font-weight: 600; }
+.ctl label small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+.ctl input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 0; }
+.val { font-family: var(--mono); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.raw { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.raw div { border: 1px solid var(--line); padding: 6px 8px; background: var(--bg); min-width: 0; }
+.raw b { display: block; font-family: var(--mono); font-size: 0.62rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.raw span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-h { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.stack { display: grid; gap: 12px; }
+.cond { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+.cond label { display: grid; gap: 2px; font-size: 0.82rem; color: var(--muted); }
+.cond select, .cond input[type=range] { width: 100%; }
+.cond select { padding: 5px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.cond input[type=range] { accent-color: var(--accent); }
+.status { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.lamp { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: var(--off); border: 1px solid var(--line); }
+.dot.on-r { background: var(--led-r); }
+.dot.on-g { background: var(--led-g); }
+.dot.on-b { background: var(--led-b); }
+.dot.on-btn { background: var(--accent); }
+.term { background: var(--term-bg); color: var(--term-ink); font-family: var(--mono); font-size: 0.76rem; line-height: 1.45; height: 330px; overflow: auto; padding: 10px 12px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+.term .h { color: #8fe0bf; }
+.term .d { color: var(--term-dim); }
+.termbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--term-bg); color: var(--term-dim); font-family: var(--mono); font-size: 0.7rem; padding: 6px 12px; border-bottom: 1px solid #22332c; }
+.t-grid { stroke: var(--line); stroke-width: 1; }
+.t-txt { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+.t-ink { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+.t-acc { font-family: var(--mono); font-size: 12px; fill: var(--accent); font-weight: 500; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--mono); font-size: 0.68rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); background: var(--tint); }
+td.m { font-family: var(--mono); white-space: nowrap; }
+.sw { display: inline-block; width: 22px; height: 6px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.wiring { display: grid; gap: 16px; }
+.pick { width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 0.85rem; }
+.desc { font-size: 0.9rem; color: var(--muted); max-width: 60ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.note { border-left: 4px solid var(--accent); background: var(--tint); padding: 10px 12px; font-size: 0.92rem; }
+@media (max-width: 900px) { .motion { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .cond { grid-template-columns: minmax(0, 1fr); } .raw { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="eyebrow">MECN3066A Group 21 / Robotic arm</div>
+      <h1>Arm bench</h1>
+      <p class="lede">Runs the same joint maths and task sequence as arm_controller.ino, with the arm drawn to scale. Drive the joints by hand, send it to a station, or play the whole demonstration and read the serial output it would print.</p>
+    </div>
+    <button class="btn" id="theme" type="button" aria-label="Switch colour theme">Theme</button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-motion" aria-selected="true" aria-controls="motion" type="button">Motion</button>
+    <button class="tab" role="tab" id="tab-wiring" aria-selected="false" aria-controls="wiring" type="button">Breadboard wiring</button>
+  </div>
+
+  <!-- ================= MOTION ================= -->
+  <section id="motion" class="motion" role="tabpanel" aria-labelledby="tab-motion">
+    <div class="views">
+      <div class="panel">
+        <h2>Side view</h2>
+        <svg id="sideView" viewBox="0 0 640 470" role="img" aria-label="Side view of the arm in the plane it is facing"></svg>
+        <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The dashed line is the standoff from the sensor face to the current target.</p>
+      </div>
+      <div class="panel">
+        <h2>Plan view</h2>
+        <svg id="planView" viewBox="0 0 640 350" role="img" aria-label="Top view of the half circle workspace with the stations"></svg>
+        <p class="cap">400 mm half circle from the brief. The bold line is where the arm faces; the dot is the sensor face.</p>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <p class="group-h">Joints (relative degrees, 0 = zero pose)</p>
+        <div class="ctl">
+          <label for="jBase">Base<small>-90 right to +90 left, 0 forward</small></label>
+          <span class="val" id="vBase">0</span>
+          <input id="jBase" type="range" min="-90" max="90" step="1" value="0">
+        </div>
+        <div class="ctl">
+          <label for="jMain">Main arm<small>-15 back to +50 forward, 0 upright</small></label>
+          <span class="val" id="vMain">0</span>
+          <input id="jMain" type="range" min="-15" max="50" step="1" value="0">
+        </div>
+        <div class="ctl">
+          <label for="jElbow">Second arm<small>-90 down to +45 up, 0 level</small></label>
+          <span class="val" id="vElbow">0</span>
+          <input id="jElbow" type="range" min="-90" max="45" step="1" value="0">
+        </div>
+        <div class="raw" aria-label="Raw servo values">
+          <div><b>Base D2</b><span id="rBase">90</span></div>
+          <div><b>Main L D3</b><span id="rL">90</span></div>
+          <div><b>Main R D4</b><span id="rR">90</span></div>
+          <div><b>2nd D5</b><span id="rE">90</span></div>
+        </div>
+        <p class="cap">Raw values assume every SERVO_ZERO is 90 and every DIR is 1. The two main arm servos always move in opposite directions.</p>
+      </div>
+
+      <div class="panel stack">
+        <div>
+          <p class="group-h">Go to</p>
+          <div class="row" id="stationBtns"></div>
+        </div>
+        <div>
+          <p class="group-h">Gestures</p>
+          <div class="row">
+            <button class="btn" type="button" data-g="yes">Yes</button>
+            <button class="btn" type="button" data-g="no">No</button>
+            <button class="btn" type="button" data-g="box">Box</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel stack">
+        <p class="group-h">Play a sketch</p>
+        <label for="sketch" class="sr">Sketch</label>
+        <select id="sketch" class="pick">
+          <option value="demo">arm_controller.ino (full demonstration)</option>
+          <option value="servos">test_servos.ino</option>
+          <option value="sensors">test_sensors.ino</option>
+          <option value="combined">test_combined.ino</option>
+        </select>
+        <p class="desc" id="sketchDesc"></p>
+        <p class="group-h">Test conditions</p>
+        <div class="cond">
+          <label for="cObj">Object on the stands
+            <select id="cObj">
+              <option value="A">At A only</option>
+              <option value="B">At B only</option>
+              <option value="AB">At A and B</option>
+              <option value="none">Neither</option>
+            </select>
+          </label>
+          <label for="cCol">Paper at C
+            <select id="cCol">
+              <option value="R">Red</option>
+              <option value="G">Green</option>
+              <option value="B">Blue</option>
+            </select>
+          </label>
+          <label for="cTap">Tap loudness at D: <span id="cTapV">320</span>
+            <input id="cTap" type="range" min="0" max="800" step="10" value="320">
+          </label>
+          <label for="cWord">Word at E
+            <select id="cWord"></select>
+          </label>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="runBtn" type="button">Run sketch</button>
+          <button class="btn stop" id="stopBtn" type="button" disabled>Stop</button>
+          <button class="btn" id="speedBtn" type="button">Speed 1x</button>
+        </div>
+        <div class="status">
+          <span class="lamp"><span class="dot" id="ledR"></span>Red D8</span>
+          <span class="lamp"><span class="dot" id="ledG"></span>Green D9</span>
+          <span class="lamp"><span class="dot" id="ledB"></span>Blue D10</span>
+          <span class="lamp"><span class="dot" id="btnLamp"></span>Button</span>
+          <span id="stateTxt">Idle</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="termbar"><span>Serial Monitor, 115200 baud</span><button class="btn" id="clearBtn" type="button" style="padding:3px 8px">Clear</button></div>
+        <pre class="term" id="term" aria-live="polite"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= WIRING ================= -->
+  <section id="wiring" class="wiring" role="tabpanel" aria-labelledby="tab-wiring" hidden>
+    <div class="panel">
+      <h2>Breadboard layout</h2>
+      <div class="scroll">
+        <svg id="bbView" viewBox="0 0 1110 650" style="min-width:760px" role="img" aria-label="Breadboard wiring of the arm controller"></svg>
+      </div>
+      <p class="cap">Servo power comes from an external 5 V supply on the top rail; the sensors run from the Uno 5 V on the bottom rail. Both grounds are joined. Hover or tap a part in the table to highlight its wires.</p>
+    </div>
+    <div class="panel">
+      <h2>Pin map</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Part</th><th>Part pin</th><th>Goes to</th><th>Wire</th></tr></thead>
+          <tbody id="pinRows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="note">The Morse receiver is a second, separate Uno (rule R2): button between D7 and GND, LCD I2C backpack on A4 / A5. It shares no wires with this board.</div>
+  </section>
+</div>
+
+<script>
+(function () {
+  /* ============ geometry and limits, copied from arm_controller.ino ============ */
+  var SH = 60, L1 = 225, L2 = 160, HEAD = 75;
+  var MIN = [-90, -15, -90], MAX = [90, 50, 45];
+  var ZERO = [0, 0, 0];
+  var ST = {
+    A:      { name: 'A',       theta: 10,  r: 350, z: 320, s: 100 },
+    B:      { name: 'B',       theta: 10,  r: 350, z: 150, s: 100 },
+    C:      { name: 'C',       theta: 55,  r: 200, z: 70,  s: 30 },
+    D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 60 },
+    INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60 },
+    INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 60 },
+    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 15 },
+    EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8 }
+  };
+  var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
+  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 300, GEST = 12;
+  var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
+  var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
+  var RAD = Math.PI / 180;
+
+  var cur = [0, 0, 0];
+  var target = null;   // {theta, r, z} being aimed at
+  var leds = { R: false, G: false, B: false }, btnOn = false;
+
+  function $(id) { return document.getElementById(id); }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function f(v, d) { return v.toFixed(d === undefined ? 1 : d); }
+
+  function fk(p) {
+    var phi = p[1] * RAD, psi = (p[2] - p[1]) * RAD;
+    var ex = L1 * Math.sin(phi), ez = SH + L1 * Math.cos(phi);
+    var wx = ex + L2 * Math.cos(psi), wz = ez + L2 * Math.sin(psi);
+    var tx = wx + HEAD * Math.cos(psi), tz = wz + HEAD * Math.sin(psi);
+    return { theta: p[0] + 90, ex: ex, ez: ez, wx: wx, wz: wz, r: tx, z: tz, psi: psi };
+  }
+
+  function ik(theta, r, z, s) {
+    var l2 = L2 + HEAD + s, dz = z - SH, D = Math.hypot(r, dz);
+    if (D < 1 || D > L1 + l2 || D < Math.abs(L1 - l2)) return null;
+    var c = (L1 * L1 + D * D - l2 * l2) / (2 * L1 * D);
+    var e = Math.atan2(dz, r) + Math.acos(clamp(c, -1, 1));
+    var ex = L1 * Math.cos(e), ez = SH + L1 * Math.sin(e);
+    var phi = 90 - e / RAD, psi = Math.atan2(z - ez, r - ex) / RAD;
+    return [theta - 90, phi, psi + phi];
+  }
+
+  function stationPose(st) {
+    var p = ik(st.theta, st.r, st.z, st.s);
+    if (!p) { log('[ik] ' + st.name + ' OUT OF REACH'); return null; }
+    for (var j = 0; j < 3; j++) {
+      if (p[j] < MIN[j] || p[j] > MAX[j]) {
+        log('[ik] ' + st.name + ' ' + ['base', 'main', '2nd'][j] + ' limit, wanted ' + f(p[j], 2));
+        p[j] = clamp(p[j], MIN[j], MAX[j]);
+      }
+    }
+    return p;
+  }
+
+  /* ============ drawing ============ */
+  var sx = function (r) { return r + 120; };
+  var sy = function (z) { return 440 - z; };
+
+  function drawSide() {
+    var k = fk(cur), h = '', i;
+    for (i = -100; i <= 500; i += 100) {
+      h += '<line class="t-grid" x1="' + sx(i) + '" y1="' + sy(0) + '" x2="' + sx(i) + '" y2="' + sy(420) + '"/>';
+      h += '<text class="t-txt" x="' + sx(i) + '" y="' + (sy(0) + 16) + '" text-anchor="middle">' + i + '</text>';
+    }
+    for (i = 100; i <= 400; i += 100) {
+      h += '<line class="t-grid" x1="' + sx(-100) + '" y1="' + sy(i) + '" x2="' + sx(500) + '" y2="' + sy(i) + '"/>';
+      h += '<text class="t-txt" x="' + (sx(-100) + 2) + '" y="' + (sy(i) - 3) + '">' + i + '</text>';
+    }
+    h += '<line x1="' + sx(-100) + '" y1="' + sy(0) + '" x2="' + sx(500) + '" y2="' + sy(0) + '" stroke="var(--muted)"/>';
+    // workspace edge 400 mm
+    h += '<line x1="' + sx(400) + '" y1="' + sy(0) + '" x2="' + sx(400) + '" y2="' + sy(400) + '" stroke="var(--muted)" stroke-dasharray="4 5"/>';
+    h += '<text class="t-txt" x="' + (sx(400) + 4) + '" y="' + sy(404) + '">R 400</text>';
+    // test stands that lie in the plane the arm faces (5 x 5 cm plates on posts)
+    [ST.A, ST.B, ST.C, ST.D, ST.EH].forEach(function (st) {
+      if (Math.abs(st.theta - k.theta) > 3) return;
+      h += '<line x1="' + sx(st.r + 30) + '" y1="' + sy(0) + '" x2="' + sx(st.r + 30) + '" y2="' + sy(st.z) + '" stroke="var(--line)" stroke-width="6"/>';
+      h += '<rect x="' + sx(st.r + 25) + '" y="' + sy(st.z + 25) + '" width="6" height="50" fill="var(--muted)"/>';
+      h += '<text class="t-txt" x="' + sx(st.r + 36) + '" y="' + sy(st.z + 28) + '">' + (st === ST.EH ? 'E' : st.name) + '</text>';
+    });
+    if (Math.abs(IND.theta - k.theta) <= 3) {
+      h += '<rect x="' + sx(IND.r + 26) + '" y="' + sy(IND.zHi) + '" width="8" height="' + (IND.zHi - IND.zLo) + '" fill="var(--tint)" stroke="var(--accent)"/>';
+      h += '<text class="t-txt" x="' + sx(IND.r + 38) + '" y="' + sy(IND.zHi - 8) + '">loud</text>';
+      h += '<text class="t-txt" x="' + sx(IND.r + 38) + '" y="' + sy(IND.zLo + 4) + '">quiet</text>';
+    }
+    // base and pillar
+    h += '<rect x="' + sx(-90) + '" y="' + sy(0) + '" width="180" height="10" fill="var(--tint)" stroke="var(--muted)"/>';
+    h += '<rect x="' + sx(-22) + '" y="' + sy(SH) + '" width="44" height="' + SH + '" fill="var(--tint)" stroke="var(--muted)"/>';
+    // target
+    if (target) {
+      var on = Math.abs(target.theta - k.theta) < 1.5;
+      h += '<circle cx="' + sx(target.r) + '" cy="' + sy(target.z) + '" r="7" fill="none" stroke="' + (on ? 'var(--accent)' : 'var(--muted)') + '" stroke-width="2"/>';
+      h += '<line x1="' + sx(target.r - 9) + '" y1="' + sy(target.z) + '" x2="' + sx(target.r + 9) + '" y2="' + sy(target.z) + '" stroke="var(--muted)"/>';
+      h += '<line x1="' + sx(target.r) + '" y1="' + sy(target.z - 9) + '" x2="' + sx(target.r) + '" y2="' + sy(target.z + 9) + '" stroke="var(--muted)"/>';
+      h += '<text class="t-ink" x="' + (sx(target.r) + 10) + '" y="' + (sy(target.z) - 10) + '">' + target.label + '</text>';
+      if (on) h += '<line x1="' + sx(k.r) + '" y1="' + sy(k.z) + '" x2="' + sx(target.r) + '" y2="' + sy(target.z) + '" stroke="var(--accent)" stroke-dasharray="3 4"/>';
+    }
+    // links
+    h += '<line x1="' + sx(0) + '" y1="' + sy(SH) + '" x2="' + sx(k.ex) + '" y2="' + sy(k.ez) + '" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"/>';
+    h += '<line x1="' + sx(k.ex) + '" y1="' + sy(k.ez) + '" x2="' + sx(k.wx) + '" y2="' + sy(k.wz) + '" stroke="var(--link2)" stroke-width="11" stroke-linecap="round"/>';
+    // head bracket, perpendicular plate at the sensor face
+    var nx = -Math.sin(k.psi), nz = Math.cos(k.psi);
+    h += '<line x1="' + sx(k.wx) + '" y1="' + sy(k.wz) + '" x2="' + sx(k.r) + '" y2="' + sy(k.z) + '" stroke="var(--muted)" stroke-width="5"/>';
+    h += '<line x1="' + sx(k.r + nx * 26) + '" y1="' + sy(k.z + nz * 26) + '" x2="' + sx(k.r - nx * 26) + '" y2="' + sy(k.z - nz * 26) + '" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>';
+    [[0, SH], [k.ex, k.ez], [k.wx, k.wz]].forEach(function (p) {
+      h += '<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
+    });
+    h += '<circle cx="' + sx(k.r) + '" cy="' + sy(k.z) + '" r="5" fill="' + (btnOn ? 'var(--accent)' : 'var(--ink)') + '"/>';
+    h += '<text class="t-acc" x="' + sx(-96) + '" y="' + sy(440) + '" dy="14">sensor face  theta ' + f(k.theta, 0) + '  r ' + f(k.r, 0) + '  z ' + f(k.z, 0) + ' mm</text>';
+    $('sideView').innerHTML = h;
+  }
+
+  var pcx = 320, pcy = 322, ps = 0.72;
+  function pp(theta, r) { return [pcx + r * ps * Math.cos(theta * RAD), pcy - r * ps * Math.sin(theta * RAD)]; }
+
+  function drawPlan() {
+    var k = fk(cur), h = '', i, a, b;
+    [100, 200, 300, 400].forEach(function (r) {
+      a = pp(0, r); b = pp(180, r);
+      h += '<path d="M ' + a[0] + ' ' + a[1] + ' A ' + (r * ps) + ' ' + (r * ps) + ' 0 0 0 ' + b[0] + ' ' + b[1] + '" fill="none" stroke="' + (r === 400 ? 'var(--muted)' : 'var(--line)') + '"/>';
+      h += '<text class="t-txt" x="' + (pcx + 4) + '" y="' + (pcy - r * ps + 12) + '">' + r + '</text>';
+    });
+    for (i = 0; i <= 180; i += 30) {
+      a = pp(i, 400); b = pp(i, 418);
+      h += '<line class="t-grid" x1="' + pcx + '" y1="' + pcy + '" x2="' + a[0] + '" y2="' + a[1] + '"/>';
+      h += '<text class="t-txt" x="' + b[0] + '" y="' + (b[1] + 4) + '" text-anchor="middle">' + i + '°</text>';
+    }
+    h += '<line x1="' + (pcx - 400 * ps) + '" y1="' + pcy + '" x2="' + (pcx + 400 * ps) + '" y2="' + pcy + '" stroke="var(--muted)"/>';
+    var marks = [['A,B', 10, 350], ['C', 55, 200], ['D', 100, 275], ['E', 170, 250]];
+    marks.forEach(function (m) {
+      var q = pp(m[1], m[2]);
+      h += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="9" fill="var(--tint)" stroke="var(--accent)" stroke-width="1.5"/>';
+      h += '<text class="t-ink" x="' + q[0] + '" y="' + (q[1] - 13) + '" text-anchor="middle">' + m[0] + '</text>';
+    });
+    var vi = pp(110, 275);
+    h += '<rect x="' + (vi[0] - 4) + '" y="' + (vi[1] - 10) + '" width="8" height="20" fill="var(--accent)" opacity="0.6"/>';
+    h += '<text class="t-txt" x="' + (vi[0] - 8) + '" y="' + (vi[1] + 22) + '" text-anchor="end">indicator 110°</text>';
+    var tip = pp(k.theta, Math.max(0, k.r));
+    var el = pp(k.theta, Math.max(0, k.ex));
+    h += '<line x1="' + pcx + '" y1="' + pcy + '" x2="' + el[0] + '" y2="' + el[1] + '" stroke="var(--accent)" stroke-width="9" stroke-linecap="round"/>';
+    h += '<line x1="' + el[0] + '" y1="' + el[1] + '" x2="' + tip[0] + '" y2="' + tip[1] + '" stroke="var(--link2)" stroke-width="7" stroke-linecap="round"/>';
+    h += '<circle cx="' + pcx + '" cy="' + pcy + '" r="9" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
+    h += '<circle cx="' + tip[0] + '" cy="' + tip[1] + '" r="5" fill="var(--ink)"/>';
+    $('planView').innerHTML = h;
+  }
+
+  function raw(v) { return clamp(Math.round(v), 0, 180); }
+  function render() {
+    drawSide(); drawPlan();
+    var ids = ['jBase', 'jMain', 'jElbow'], vids = ['vBase', 'vMain', 'vElbow'];
+    for (var j = 0; j < 3; j++) {
+      if (document.activeElement !== $(ids[j])) $(ids[j]).value = Math.round(cur[j]);
+      $(vids[j]).textContent = (cur[j] > 0 ? '+' : '') + f(cur[j]);
+    }
+    $('rBase').textContent = raw(90 + cur[0]);
+    $('rL').textContent = raw(90 + cur[1]);
+    $('rR').textContent = raw(90 - cur[1]);
+    $('rE').textContent = raw(90 + cur[2]);
+    $('ledR').className = 'dot' + (leds.R ? ' on-r' : '');
+    $('ledG').className = 'dot' + (leds.G ? ' on-g' : '');
+    $('ledB').className = 'dot' + (leds.B ? ' on-b' : '');
+    $('btnLamp').className = 'dot' + (btnOn ? ' on-btn' : '');
+  }
+
+  /* ============ serial monitor ============ */
+  var term = $('term'), lines = 0;
+  function log(s, cls) {
+    var span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = s + '\n';
+    term.appendChild(span);
+    if (++lines > 500) { term.removeChild(term.firstChild); lines--; }
+    term.scrollTop = term.scrollHeight;
+  }
+  function posLine(label) {
+    var k = fk(cur);
+    log('[pos] ' + label + '  base ' + f(cur[0]) + '  main ' + f(cur[1]) + '  2nd ' + f(cur[2]) +
+        '  | sensor at theta ' + f(k.theta, 0) + ' r ' + f(k.r, 0) + ' z ' + f(k.z, 0));
+  }
+
+  /* ============ motion engine ============ */
+  var speed = 1, runId = 0, busy = false;
+  function Stop() {}
+  function sleep(ms, id) {
+    return new Promise(function (res, rej) {
+      setTimeout(function () { id !== runId ? rej(new Stop()) : res(); }, ms / speed);
+    });
+  }
+  function moveTo(p, ms, id) {
+    var start = cur.slice(), dur = ms / speed, t0 = performance.now();
+    return new Promise(function (res, rej) {
+      function step(now) {
+        if (id !== runId) return rej(new Stop());
+        var t = Math.min(1, (now - t0) / dur), e = 0.5 - 0.5 * Math.cos(Math.PI * t);
+        for (var j = 0; j < 3; j++) cur[j] = clamp(start[j] + (p[j] - start[j]) * e, MIN[j], MAX[j]);
+        render();
+        t < 1 ? requestAnimationFrame(step) : res();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+  function snap(p) { for (var j = 0; j < 3; j++) cur[j] = clamp(p[j], MIN[j], MAX[j]); render(); }
+  function setTarget(st, label) { target = st ? { theta: st.theta, r: st.r, z: st.z, label: label || st.name } : null; }
+
+  async function goToPose(p, label, id) {
+    if (Math.abs(cur[0] - p[0]) > 1) {
+      await moveTo([cur[0], 0, 15], 1200, id);
+      await moveTo([p[0], 0, 15], 1500, id);
+    }
+    await moveTo(p, 1200, id);
+    await sleep(400, id);
+    posLine(label);
+  }
+  async function goToStation(st, id) {
+    var p = stationPose(st);
+    setTarget(st);
+    if (p) await goToPose(p, st.name, id);
+    return p;
+  }
+  async function nod(j, name, id) {
+    log('[gesture] ' + name);
+    var c = cur[j];
+    for (var i = 0; i < 3; i++) {
+      var a = cur.slice(); a[j] = c + GEST; await moveTo(a, 400, id);
+      a = cur.slice(); a[j] = c - GEST; await moveTo(a, 400, id);
+    }
+    var b = cur.slice(); b[j] = c; await moveTo(b, 400, id);
+  }
+  async function box(id) {
+    log('[gesture] BOX');
+    var cb = cur[0], ce = cur[2], k = [[-1, 1], [1, 1], [1, -1], [-1, -1], [-1, 1]];
+    for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cur[1], ce + k[i][1] * GEST], 800, id);
+    await moveTo([cb, cur[1], ce], 800, id);
+  }
+
+  /* ============ simulated sensors ============ */
+  function distAt(present) { return present ? 10 + (Math.random() - 0.5) * 0.8 : -1; }
+  var PAPER = { R: [520, 190, 150, 900], G: [210, 380, 230, 860], B: [160, 250, 420, 870] };
+  var TEMP = { R: 2600, G: 5600, B: 9800 };
+  function nameOf(c) { return c === 'R' ? 'RED' : (c === 'G' ? 'GREEN' : 'BLUE'); }
+
+  /* ============ the demonstration (mirrors arm_controller.ino) ============ */
+  async function demo(id) {
+    var obj = $('cObj').value, col = $('cCol').value, tap = +$('cTap').value, word = $('cWord').value;
+    leds = { R: false, G: false, B: false };
+    log('Group 21 robotic arm, demonstration', 'h');
+    log('[init] colour sensor found');
+    await moveTo(ZERO, 600, id);
+    setTarget(null);
+    posLine('zero');
+    log('[zero] holding all joints at 0 for 5 s');
+    log('[word] current word ' + word + '. Type a new 3 letter word now to change it.');
+    await sleep(5000, id);
+    log('[word] target word ' + word);
+    log('');
+    log('=== RUN START ===', 'h');
+
+    // Task 1
+    log(''); log('=== TASK 1: Points A and B (ultrasonic) ===', 'h');
+    await goToStation(ST.A, id);
+    var dA = distAt(obj === 'A' || obj === 'AB'), rA = dA >= 2 && dA <= US_MAX;
+    log('[A] distance ' + f(dA) + (rA ? ' cm -> OBJECT' : ' cm -> empty'));
+    if (rA) await nod(2, 'YES (up / down)', id);
+    await goToStation(ST.B, id);
+    var dB = distAt(obj === 'B' || obj === 'AB'), rB = dB >= 2 && dB <= US_MAX;
+    log('[B] distance ' + f(dB) + (rB ? ' cm -> OBJECT' : ' cm -> empty'));
+    if (rB) await nod(0, 'NO (left / right)', id);
+    if (!rA && !rB) await box(id);
+
+    // Task 2
+    log(''); log('=== TASK 2: Point C (colour) ===', 'h');
+    await goToStation(ST.C, id);
+    var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
+    log('[colour] raw r ' + pr[0] + ' g ' + pr[1] + ' b ' + pr[2] + ' clear ' + pr[3]);
+    log('[colour] temp ' + TEMP[col] + ' K  lux ' + Math.round(pr[1] * 0.3) + '  primary ' + nameOf(col));
+    log('[colour] normalised ' + f(pr[0] / s, 3) + ' ' + f(pr[1] / s, 3) + ' ' + f(pr[2] / s, 3));
+    log('[C] colour -> ' + nameOf(col));
+    leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
+
+    // Task 3
+    log(''); log('=== TASK 3: Point D (sound) ===', 'h');
+    await goToStation(ST.D, id);
+    log('[D] listening for a tap (3 s)');
+    await sleep(tap > 0 ? 900 : 3000, id);
+    var amp = tap >= 40 ? tap : -1;
+    var lv = amp < 0 ? 0 : clamp((amp - AMP_MIN) / (AMP_MAX - AMP_MIN), 0, 1);
+    log('[D] amplitude ' + amp + ' -> level ' + Math.round(lv * 100) + '%');
+    var zp = IND.zLo + lv * (IND.zHi - IND.zLo);
+    var ind = { name: 'indicator', theta: IND.theta, r: IND.r, z: zp, s: IND.s };
+    var p = stationPose(ind);
+    setTarget(ind, 'indicator ' + f(zp, 0));
+    if (p) { await moveTo(p, 1200, id); posLine('indicator'); }
+    log('[D] pointing at height ' + f(zp, 0) + ' mm');
+    await sleep(3000, id);
+
+    // Task 4
+    log(''); log('=== TASK 4: Point E (Morse) ===', 'h');
+    var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
+    setTarget(ST.EH, 'E button');
+    await goToPose(hov, 'E hover', id);
+    log('[morse] word ' + word);
+    for (var i = 0; i < word.length; i++) {
+      var code = MORSE[word[i]], txt = '[morse] ' + word[i] + '  ';
+      for (var c = 0; c < code.length; c++) {
+        txt += code[c] === '.' ? 'dot ' : 'DASH ';
+        snap(prs); btnOn = true; render();
+        await sleep(code[c] === '.' ? UNIT : 3 * UNIT, id);
+        snap(hov); btnOn = false; render();
+        if (c < code.length - 1) await sleep(UNIT, id);
+      }
+      log(txt);
+      if (i < word.length - 1) await sleep(3 * UNIT, id);
+    }
+    await sleep(8 * UNIT, id);
+    log('[morse] sent ' + word);
+
+    // Finish
+    setTarget(null);
+    await goToPose(ZERO, 'zero', id);
+    log(''); log('=========== RUN SUMMARY ===========', 'h');
+    log('A: ' + (rA ? 'object' : 'empty') + ' (' + f(dA) + ' cm)');
+    log('B: ' + (rB ? 'object' : 'empty') + ' (' + f(dB) + ' cm)');
+    log('Gesture: ' + (rA && rB ? 'YES then NO' : rA ? 'YES' : rB ? 'NO' : 'BOX'));
+    log('C colour: ' + nameOf(col));
+    log('D sound: amplitude ' + amp + ', level ' + Math.round(lv * 100) + '%');
+    log('E word: ' + word);
+    log('====================================', 'h');
+  }
+
+  /* ============ test sketches (mirror the .ino files) ============ */
+  var JN = ['base', 'main arm', '2nd arm'];
+  function anglesLine() {
+    log('[pos] base ' + f(cur[0], 0) + '  main ' + f(cur[1], 0) + ' (L raw ' + raw(90 + cur[1]) + ', R raw ' + raw(90 - cur[1]) + ')  2nd ' + f(cur[2], 0));
+  }
+  // test_servos moves 1 degree every 20 ms
+  async function glide(j, to, id) {
+    var p = cur.slice(); p[j] = clamp(to, MIN[j], MAX[j]);
+    await moveTo(p, Math.max(60, Math.abs(p[j] - cur[j]) * 20), id);
+  }
+  async function testServos(id) {
+    setTarget(null);
+    log(''); log('=== SERVO TEST ===', 'h');
+    await moveTo(ZERO, 600, id);
+    log('All joints at ZERO for 5 s: base forward, main arm upright, 2nd arm level');
+    anglesLine();
+    await sleep(5000, id);
+    log(''); log('--- Direction check: +10 on each joint ---', 'h');
+    var expect = ['should turn LEFT', 'should lean FORWARD', 'should tilt UP'];
+    for (var j = 0; j < 3; j++) {
+      log(JN[j] + ' +10, ' + expect[j]);
+      await glide(j, 10, id); await sleep(1500, id);
+      await glide(j, 0, id); await sleep(500, id);
+    }
+    log(''); log('--- Full sweep of every joint ---', 'h');
+    for (j = 0; j < 3; j++) {
+      log('Sweeping ' + JN[j] + ' from ' + MIN[j] + ' to ' + MAX[j]);
+      await glide(j, MIN[j], id); anglesLine(); await sleep(800, id);
+      await glide(j, MAX[j], id); anglesLine(); await sleep(800, id);
+      await glide(j, 0, id); anglesLine(); await sleep(500, id);
+    }
+    log('Sweep done. Manual control ready: b30, m-10, e+, b++, z, s, p');
+  }
+
+  async function testSensors(id) {
+    setTarget(null);
+    var obj = $('cObj').value, col = $('cCol').value, tap = +$('cTap').value;
+    log(''); log('=== SENSOR TEST ===', 'h');
+    log('colour sensor found');
+    log('Commands: r, g, b (calibrate colour), t (tap test)');
+    var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
+    for (var i = 0; i < 16; i++) {
+      var d = obj === 'none' ? -1 : 10 + (Math.random() - 0.5) * 0.8;
+      var snd = (i === 6 && tap > 0) ? tap : 4 + Math.round(Math.random() * 6);
+      var cn = nameOf(col);
+      log('dist ' + (d < 0 ? 'no echo' : f(d) + ' cm') + (d >= 2 && d <= US_MAX ? ' OBJECT' : ' empty') +
+          ' | colour ' + pr[0] + '/' + pr[1] + '/' + pr[2] + ' clr ' + pr[3] + ' n ' + f(pr[0] / s, 2) + ' ' + f(pr[1] / s, 2) + ' ' + f(pr[2] / s, 2) +
+          ' -> ' + cn + ' temp ' + TEMP[col] + 'K primary ' + cn + ' | sound ' + snd);
+      leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
+      await sleep(470, id);
+    }
+    log('[sensor test keeps printing until the board is reset]', 'd');
+  }
+
+  async function testCombined(id) {
+    var col = $('cCol').value, tap = +$('cTap').value, obj = $('cObj').value;
+    log(''); log('=== COMBINED MOVEMENT TEST ===', 'h');
+    setTarget(null);
+    await moveTo(ZERO, 1200, id);
+    posLine('zero'); log('[zero] holding 5 s');
+    await sleep(5000, id);
+    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('[' + at + '] distance ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
+    if (await goToStation(ST.A, id)) { dist('A'); await nod(2, 'YES (up / down)', id); }
+    if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'NO (left / right)', id); }
+    await box(id);
+    if (await goToStation(ST.C, id)) {
+      var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
+      log('[C] colour raw ' + pr[0] + '/' + pr[1] + '/' + pr[2] + ' clear ' + pr[3] + '  normalised ' + f(pr[0] / s, 2) + ' ' + f(pr[1] / s, 2) + ' ' + f(pr[2] / s, 2));
+      log('[C] temp ' + TEMP[col] + ' K  lux ' + Math.round(pr[1] * 0.3) + '  primary ' + nameOf(col));
+    }
+    if (await goToStation(ST.D, id)) {
+      log('[D] listening 2 s, tap now');
+      await sleep(2000, id);
+      log('[D] sound peak to peak ' + (tap > 0 ? tap : 9));
+    }
+    for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
+      await goToStation(k, id); await sleep(1000, id);
+    }
+    var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
+    setTarget(ST.EH, 'E button');
+    await goToPose(hov, 'E hover', id);
+    log('[E] dot press (300 ms)');
+    snap(prs); btnOn = true; render(); await sleep(300, id); snap(hov); btnOn = false; render(); await sleep(600, id);
+    log('[E] dash press (900 ms)');
+    snap(prs); btnOn = true; render(); await sleep(900, id); snap(hov); btnOn = false; render(); await sleep(600, id);
+    posLine('E hover');
+    setTarget(null);
+    await goToPose(ZERO, 'zero', id);
+    log('=== DONE. Type any key to run again. ===', 'h');
+  }
+
+  var SKETCHES = {
+    demo: { fn: demo, label: 'Running arm_controller', desc: 'The marked run. Holds zero for 5 s (type the word then), scans A and B with the ultrasonic and gestures YES, NO or BOX, reads the paper at C and lights its LED, listens at D and points at a height on the indicator, then taps the word in Morse at E and prints a summary. Uses all four test conditions.' },
+    servos: { fn: testServos, label: 'Running test_servos', desc: 'Servos only, no sensors. Holds zero for 5 s, nudges each joint +10 so you can check direction (base left, main forward, 2nd up), then sweeps every joint through its full range at 1 degree per 20 ms. Watch the raw L and R values move in opposite directions.' },
+    sensors: { fn: testSensors, label: 'Running test_sensors', desc: 'Sensors only, the arm stays still. Prints distance, colour (raw, normalised, class, temperature, primary colour) and sound level every half second, and lights the matching LED. Uses the object, paper and tap conditions.' },
+    combined: { fn: testCombined, label: 'Running test_combined', desc: 'Every movement of the demonstration with no decisions: each station, all three gestures, the indicator at low, middle and high, and one dot and one dash press at E. Prints the angles and a sensor reading at every stop.' }
+  };
+  function showDesc() { $('sketchDesc').textContent = SKETCHES[$('sketch').value].desc; }
+  $('sketch').addEventListener('change', showDesc);
+  showDesc();
+
+  /* ============ UI wiring ============ */
+  function setBusy(b, label) {
+    busy = b;
+    $('runBtn').disabled = b;
+    $('stopBtn').disabled = !b;
+    $('stateTxt').textContent = label || (b ? 'Running' : 'Idle');
+  }
+  async function run(fn, label) {
+    var id = ++runId;
+    setBusy(true, label);
+    try { await fn(id); setBusy(false); }
+    catch (e) { if (!(e instanceof Stop)) throw e; if (id === runId) setBusy(false, 'Stopped'); }
+    btnOn = false; render();
+  }
+
+  WORDS.forEach(function (w) { var o = document.createElement('option'); o.value = o.textContent = w; $('cWord').appendChild(o); });
+  $('cTap').addEventListener('input', function () { $('cTapV').textContent = this.value; });
+
+  var btns = [['Zero', null], ['A', ST.A], ['B', ST.B], ['C', ST.C], ['D', ST.D], ['Ind low', ST.INDLO], ['Ind high', ST.INDHI], ['E hover', ST.EH], ['E press', ST.EP]];
+  btns.forEach(function (b) {
+    var el = document.createElement('button');
+    el.className = 'btn'; el.type = 'button'; el.textContent = b[0];
+    el.addEventListener('click', function () {
+      run(async function (id) {
+        if (!b[1]) { setTarget(null); await goToPose(ZERO, 'zero', id); }
+        else await goToStation(b[1], id);
+      }, 'Moving to ' + b[0]);
+    });
+    $('stationBtns').appendChild(el);
+  });
+  document.querySelectorAll('[data-g]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var g = el.getAttribute('data-g');
+      run(function (id) {
+        return g === 'yes' ? nod(2, 'YES (up / down)', id) : g === 'no' ? nod(0, 'NO (left / right)', id) : box(id);
+      }, 'Gesture');
+    });
+  });
+  [['jBase', 0], ['jMain', 1], ['jElbow', 2]].forEach(function (s) {
+    $(s[0]).addEventListener('input', function () {
+      runId++; setBusy(false, 'Manual');
+      cur[s[1]] = +this.value; render();
+    });
+    $(s[0]).addEventListener('change', function () { posLine('manual'); });
+  });
+  $('runBtn').addEventListener('click', function () {
+    var s = SKETCHES[$('sketch').value];
+    leds = { R: false, G: false, B: false };
+    run(s.fn, s.label);
+  });
+  $('stopBtn').addEventListener('click', function () { runId++; setBusy(false, 'Stopped'); log('[stopped]', 'd'); });
+  $('speedBtn').addEventListener('click', function () {
+    speed = speed === 1 ? 3 : (speed === 3 ? 6 : 1);
+    this.textContent = 'Speed ' + speed + 'x';
+  });
+  $('clearBtn').addEventListener('click', function () { term.textContent = ''; lines = 0; });
+
+  /* tabs */
+  function show(tab) {
+    var m = tab === 'motion';
+    $('motion').hidden = !m; $('wiring').hidden = m;
+    $('tab-motion').setAttribute('aria-selected', m); $('tab-wiring').setAttribute('aria-selected', !m);
+  }
+  $('tab-motion').addEventListener('click', function () { show('motion'); });
+  $('tab-wiring').addEventListener('click', function () { show('wiring'); });
+  if (location.hash === '#wiring') show('wiring');
+
+  /* theme */
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem('armbench-theme'); if (saved) root.setAttribute('data-theme', saved); } catch (e) {}
+  $('theme').addEventListener('click', function () {
+    var dark = root.getAttribute('data-theme') === 'dark' ||
+      (!root.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var next = dark ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('armbench-theme', next); } catch (e) {}
+  });
+
+  /* ============ breadboard wiring view ============ */
+  // Breadboard: 30 columns x 10 rows, 2 rails each side. Hole pitch 22 px.
+  var BB = { x: 330, y: 250, pitch: 22, cols: 24 };
+  function hole(col, row) { // row: 'a'..'j'
+    var r = 'abcdefghij'.indexOf(row);
+    var y = BB.y + 58 + r * BB.pitch + (r >= 5 ? 22 : 0);
+    return [BB.x + 30 + (col - 1) * BB.pitch, y];
+  }
+  function rail(col, which) { // top+ top- bot+ bot-
+    var y = { 'top+': BB.y + 14, 'top-': BB.y + 34, 'bot+': BB.y + 58 + 9 * BB.pitch + 22 + 34, 'bot-': BB.y + 58 + 9 * BB.pitch + 22 + 54 }[which];
+    return [BB.x + 30 + (col - 1) * BB.pitch, y];
+  }
+  var UNO = { x: 30, y: 210, w: 230, h: 330 };
+  var unoPins = {};
+  ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10'].forEach(function (n, i) { unoPins[n] = [UNO.x + UNO.w, UNO.y + 40 + i * 24]; });
+  ['A1', 'A4', 'A5'].forEach(function (n, i) { unoPins[n] = [UNO.x + UNO.w, UNO.y + 270 + i * 20]; });
+  unoPins['5V'] = [UNO.x + 70, UNO.y + UNO.h];
+  unoPins['GND'] = [UNO.x + 110, UNO.y + UNO.h];
+
+  var parts = [
+    { id: 'base',  label: 'Base servo',        x: 330, y: 40, kind: 'servo' },
+    { id: 'mainL', label: 'Main arm L',        x: 470, y: 40, kind: 'servo' },
+    { id: 'mainR', label: 'Main arm R',        x: 610, y: 40, kind: 'servo' },
+    { id: 'elbow', label: 'Second arm servo',  x: 750, y: 40, kind: 'servo' },
+    { id: 'psu',   label: 'External 5 V, 2 A', x: 960, y: 150, kind: 'psu' },
+    { id: 'us',    label: 'HC-SR04',           x: 950, y: 300, kind: 'us' },
+    { id: 'snd',   label: 'Sound sensor',      x: 950, y: 430, kind: 'snd' },
+    { id: 'tcs',   label: 'TCS34725',          x: 950, y: 540, kind: 'tcs' }
+  ];
+
+  // Each wire: part, part pin label, from xy, to xy, colour token, destination text
+  var wires = [];
+  function W(part, pin, a, b, col, dest, via) { wires.push({ part: part, pin: pin, a: a, b: b, col: col, dest: dest, via: via }); }
+  var servoCols = { base: 2, mainL: 8, mainR: 14, elbow: 20 };
+  var servoSig = { base: 'D2', mainL: 'D3', mainR: 'D4', elbow: 'D5' };
+  parts.slice(0, 4).forEach(function (p) {
+    var px = p.x + 40, py = p.y + 98, c = servoCols[p.id];
+    W(p.id, 'brown (GND)', [px - 14, py], rail(c, 'top-'), '--w-brown', 'top rail -');
+    W(p.id, 'red (V+)', [px, py], rail(c + 1, 'top+'), '--w-red', 'top rail + (external 5 V)');
+    W(p.id, 'orange (signal)', [px + 14, py], unoPins[servoSig[p.id]], '--w-orange', servoSig[p.id], 'servo');
+  });
+  W('psu', '+5 V', [1020, 214], rail(24, 'top+'), '--w-red', 'top rail +');
+  W('psu', 'GND', [1040, 214], rail(23, 'top-'), '--w-black', 'top rail -');
+  W('uno', 'GND', unoPins['GND'], rail(1, 'bot-'), '--w-black', 'bottom rail - (join to top rail -)');
+  W('uno', '5V', unoPins['5V'], rail(2, 'bot+'), '--w-red', 'bottom rail + (sensor 5 V)');
+  W('gnd', 'link', rail(24, 'top-'), rail(24, 'bot-'), '--w-black', 'common ground', 'side');
+  W('us', 'VCC (red)', [960, 356], rail(19, 'bot+'), '--w-red', 'bottom rail +');
+  W('us', 'TRIG (brown)', [980, 356], unoPins['D7'], '--w-brown', 'D7');
+  W('us', 'ECHO (yellow)', [1000, 356], unoPins['D6'], '--w-yellow', 'D6');
+  W('us', 'GND (grey)', [1020, 356], rail(20, 'bot-'), '--w-grey', 'bottom rail -');
+  W('snd', 'AO', [965, 476], unoPins['A1'], '--w-purple', 'A1');
+  W('snd', 'VCC', [985, 476], rail(21, 'bot+'), '--w-red', 'bottom rail +');
+  W('snd', 'GND', [1005, 476], rail(22, 'bot-'), '--w-black', 'bottom rail -');
+  W('tcs', 'SDA', [965, 586], unoPins['A4'], '--w-blue', 'A4');
+  W('tcs', 'SCL', [985, 586], unoPins['A5'], '--w-green', 'A5');
+  W('tcs', 'VIN', [1005, 586], rail(17, 'bot+'), '--w-red', 'bottom rail +');
+  W('tcs', 'GND', [1025, 586], rail(18, 'bot-'), '--w-black', 'bottom rail -');
+  // LEDs on the breadboard: anode row e, cathode row f via resistor to bottom rail -
+  [['ledR', 'Red LED', 'D8', 6, '--led-r'], ['ledG', 'Green LED', 'D9', 10, '--led-g'], ['ledB', 'Blue LED', 'D10', 14, '--led-b']].forEach(function (l) {
+    W(l[0], 'anode (long leg), row ' + l[3] + 'a', unoPins[l[2]], hole(l[3], 'a'), '--w-green', l[2], 'led');
+    W(l[0], '220 ohm, row ' + (l[3] + 1) + 'j to rail', hole(l[3] + 1, 'j'), rail(l[3] + 1, 'bot-'), '--w-black', 'bottom rail -');
+  });
+
+  function wirePath(w) {
+    var a = w.a, b = w.b;
+    if (w.via === 'side') return 'M ' + a[0] + ' ' + a[1] + ' H ' + (a[0] + 24) + ' V ' + b[1] + ' H ' + b[0];
+    if (w.via === 'servo') return 'M ' + a[0] + ' ' + a[1] + ' V ' + (a[1] + 18 + (a[0] % 7)) + ' H ' + (UNO.x + UNO.w + 20 + (a[0] % 60)) + ' V ' + b[1] + ' H ' + b[0];
+    if (w.via === 'led') { var lx = UNO.x + UNO.w + 40 + (a[1] - UNO.y) / 3; return 'M ' + a[0] + ' ' + a[1] + ' H ' + lx + ' V ' + (b[1] - 12) + ' H ' + b[0] + ' V ' + b[1]; }
+    if (Math.abs(a[1] - b[1]) < 4) return 'M ' + a[0] + ' ' + a[1] + ' H ' + b[0];
+    if (a[0] > 930) { var lane = 900 + ((a[0] / 5) % 8) * 4; return 'M ' + a[0] + ' ' + a[1] + ' V ' + (a[1] + 10) + ' H ' + lane + ' V ' + b[1] + ' H ' + b[0]; }
+    return 'M ' + a[0] + ' ' + a[1] + ' V ' + ((a[1] + b[1]) / 2) + ' H ' + b[0] + ' V ' + b[1];
+  }
+
+  function drawBB() {
+    var h = '', c, r;
+    // breadboard body
+    var bw = 30 + BB.cols * BB.pitch, bh = 58 + 9 * BB.pitch + 22 + 70;
+    h += '<rect x="' + BB.x + '" y="' + BB.y + '" width="' + bw + '" height="' + bh + '" rx="6" fill="var(--bb)" stroke="var(--line)"/>';
+    for (c = 1; c <= BB.cols; c++) {
+      'abcdefghij'.split('').forEach(function (row) { var p = hole(c, row); h += '<rect x="' + (p[0] - 3) + '" y="' + (p[1] - 3) + '" width="6" height="6" fill="var(--bb-hole)"/>'; });
+      ['top+', 'top-', 'bot+', 'bot-'].forEach(function (k) { var p = rail(c, k); h += '<rect x="' + (p[0] - 3) + '" y="' + (p[1] - 3) + '" width="6" height="6" fill="var(--bb-hole)"/>'; });
+    }
+    [['top+', '--w-red'], ['top-', '--w-blue'], ['bot+', '--w-red'], ['bot-', '--w-blue']].forEach(function (k) {
+      var p = rail(1, k[0]), q = rail(BB.cols, k[0]);
+      var off = k[0].slice(-1) === '+' ? -9 : 9;
+      h += '<line x1="' + (p[0] - 10) + '" y1="' + (p[1] + off) + '" x2="' + (q[0] + 10) + '" y2="' + (q[1] + off) + '" stroke="var(' + k[1] + ')" stroke-width="1.5"/>';
+      h += '<text class="t-txt" x="' + (BB.x + 8) + '" y="' + (p[1] + 4) + '">' + k[0].slice(-1) + '</text>';
+    });
+    var ch = hole(1, 'e')[1] + 11;
+    h += '<rect x="' + (BB.x + 18) + '" y="' + (ch - 4) + '" width="' + (bw - 36) + '" height="8" fill="var(--bb-hole)" opacity="0.6"/>';
+    h += '<text class="t-txt" x="' + (BB.x + bw - 6) + '" y="' + (BB.y + 14) + '" text-anchor="end">servo power</text>';
+    h += '<text class="t-txt" x="' + (BB.x + bw - 6) + '" y="' + (rail(1, 'bot-')[1] + 20) + '" text-anchor="end">sensor power</text>';
+    // LEDs and resistors on the board
+    [[6, '--led-r'], [10, '--led-g'], [14, '--led-b']].forEach(function (l) {
+      var a = hole(l[0], 'e'), k = hole(l[0] + 1, 'e'), f1 = hole(l[0] + 1, 'f'), j = hole(l[0] + 1, 'j');
+      h += '<line x1="' + a[0] + '" y1="' + hole(l[0], 'a')[1] + '" x2="' + a[0] + '" y2="' + a[1] + '" stroke="var(--muted)" stroke-width="1"/>';
+      h += '<circle cx="' + ((a[0] + k[0]) / 2) + '" cy="' + (a[1] - 14) + '" r="10" fill="var(' + l[1] + ')" stroke="var(--ink)"/>';
+      h += '<line x1="' + a[0] + '" y1="' + (a[1] - 6) + '" x2="' + a[0] + '" y2="' + a[1] + '" stroke="var(--ink)"/>';
+      h += '<line x1="' + k[0] + '" y1="' + (k[1] - 6) + '" x2="' + k[0] + '" y2="' + k[1] + '" stroke="var(--ink)"/>';
+      h += '<rect x="' + (f1[0] - 5) + '" y="' + (f1[1] + 4) + '" width="10" height="' + (j[1] - f1[1] - 8) + '" rx="3" fill="#d9b98c" stroke="var(--ink)"/>';
+      h += '<line x1="' + k[0] + '" y1="' + k[1] + '" x2="' + f1[0] + '" y2="' + f1[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
+    });
+    // Uno
+    h += '<rect x="' + UNO.x + '" y="' + UNO.y + '" width="' + UNO.w + '" height="' + UNO.h + '" rx="8" fill="var(--board)"/>';
+    h += '<text x="' + (UNO.x + 18) + '" y="' + (UNO.y + 30) + '" font-family="var(--display)" font-weight="700" font-size="26" fill="#ffffff">ARDUINO UNO</text>';
+    h += '<rect x="' + (UNO.x - 14) + '" y="' + (UNO.y + 50) + '" width="40" height="44" fill="#9aa3a8"/>';
+    h += '<text x="' + (UNO.x + 30) + '" y="' + (UNO.y + 76) + '" font-family="var(--mono)" font-size="10" fill="#dbe8f2">USB</text>';
+    Object.keys(unoPins).forEach(function (n) {
+      var p = unoPins[n], right = p[0] === UNO.x + UNO.w;
+      h += '<rect x="' + (p[0] - 5) + '" y="' + (p[1] - 5) + '" width="10" height="10" fill="#111"/>';
+      h += '<text x="' + (right ? p[0] - 10 : p[0]) + '" y="' + (right ? p[1] + 4 : p[1] - 10) + '" text-anchor="' + (right ? 'end' : 'middle') + '" font-family="var(--mono)" font-size="11" fill="#ffffff">' + n + '</text>';
+    });
+    // parts
+    parts.forEach(function (p) {
+      if (p.kind === 'servo') {
+        h += '<g data-part="' + p.id + '"><rect x="' + p.x + '" y="' + p.y + '" width="80" height="44" rx="4" fill="#2c5fa8"/>';
+        h += '<circle cx="' + (p.x + 22) + '" cy="' + (p.y + 22) + '" r="12" fill="#f3f3f3"/>';
+        h += '<text class="t-ink" x="' + (p.x + 40) + '" y="' + (p.y - 8) + '" text-anchor="middle">' + p.label + '</text>';
+        h += '<line x1="' + (p.x + 26) + '" y1="' + (p.y + 44) + '" x2="' + (p.x + 26) + '" y2="' + (p.y + 98) + '" stroke="var(--w-brown)" stroke-width="3"/>';
+        h += '<line x1="' + (p.x + 40) + '" y1="' + (p.y + 44) + '" x2="' + (p.x + 40) + '" y2="' + (p.y + 98) + '" stroke="var(--w-red)" stroke-width="3"/>';
+        h += '<line x1="' + (p.x + 54) + '" y1="' + (p.y + 44) + '" x2="' + (p.x + 54) + '" y2="' + (p.y + 98) + '" stroke="var(--w-orange)" stroke-width="3"/></g>';
+      } else if (p.kind === 'psu') {
+        h += '<rect x="' + p.x + '" y="' + p.y + '" width="110" height="64" rx="4" fill="var(--link2)"/>';
+        h += '<text x="' + (p.x + 55) + '" y="' + (p.y + 28) + '" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--surface)">5 V  2 A</text>';
+        h += '<text class="t-ink" x="' + (p.x + 55) + '" y="' + (p.y - 8) + '" text-anchor="middle">' + p.label + '</text>';
+      } else if (p.kind === 'us') {
+        h += '<rect x="' + p.x + '" y="' + p.y + '" width="100" height="56" rx="4" fill="#2a6fb0"/>';
+        h += '<circle cx="' + (p.x + 26) + '" cy="' + (p.y + 26) + '" r="17" fill="#cfd6db" stroke="#6b7680"/>';
+        h += '<circle cx="' + (p.x + 74) + '" cy="' + (p.y + 26) + '" r="17" fill="#cfd6db" stroke="#6b7680"/>';
+        h += '<text class="t-ink" x="' + (p.x + 50) + '" y="' + (p.y - 8) + '" text-anchor="middle">' + p.label + '</text>';
+      } else if (p.kind === 'snd') {
+        h += '<rect x="' + p.x + '" y="' + p.y + '" width="90" height="46" rx="4" fill="#1f4f9a"/>';
+        h += '<rect x="' + (p.x + 10) + '" y="' + (p.y + 12) + '" width="18" height="18" fill="#2f7ae0"/>';
+        h += '<circle cx="' + (p.x + 66) + '" cy="' + (p.y + 22) + '" r="12" fill="#3a3a3a"/>';
+        h += '<text class="t-ink" x="' + (p.x + 45) + '" y="' + (p.y - 8) + '" text-anchor="middle">' + p.label + '</text>';
+      } else if (p.kind === 'tcs') {
+        h += '<rect x="' + p.x + '" y="' + p.y + '" width="90" height="46" rx="4" fill="#2f3a8a"/>';
+        h += '<rect x="' + (p.x + 38) + '" y="' + (p.y + 14) + '" width="14" height="14" fill="#f4f4f4"/>';
+        h += '<text class="t-ink" x="' + (p.x + 45) + '" y="' + (p.y - 8) + '" text-anchor="middle">' + p.label + '</text>';
+      }
+    });
+    // wires
+    wires.forEach(function (w, i) {
+      h += '<path data-w="' + w.part + '" d="' + wirePath(w) + '" fill="none" stroke="var(' + w.col + ')" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" opacity="0.92"/>';
+      h += '<circle cx="' + w.b[0] + '" cy="' + w.b[1] + '" r="3.5" fill="var(' + w.col + ')"/>';
+    });
+    $('bbView').innerHTML = h;
+
+    // table
+    var rows = '', names = { base: 'Base servo', mainL: 'Main arm servo, left', mainR: 'Main arm servo, right', elbow: 'Second arm servo', psu: 'External 5 V supply', uno: 'Uno', gnd: 'Ground link', us: 'Ultrasonic HC-SR04', snd: 'Sound sensor', tcs: 'Colour sensor TCS34725', ledR: 'Red LED', ledG: 'Green LED', ledB: 'Blue LED' };
+    wires.forEach(function (w) {
+      rows += '<tr data-row="' + w.part + '" tabindex="0"><td>' + names[w.part] + '</td><td class="m">' + w.pin + '</td><td class="m">' + w.dest + '</td><td><span class="sw" style="background:var(' + w.col + ')"></span></td></tr>';
+    });
+    $('pinRows').innerHTML = rows;
+    function hl(part) {
+      document.querySelectorAll('#bbView [data-w]').forEach(function (p) {
+        p.setAttribute('opacity', !part || p.getAttribute('data-w') === part ? '0.92' : '0.12');
+        p.setAttribute('stroke-width', p.getAttribute('data-w') === part ? '4' : '2.6');
+      });
+    }
+    document.querySelectorAll('[data-row]').forEach(function (tr) {
+      tr.addEventListener('mouseenter', function () { hl(tr.getAttribute('data-row')); });
+      tr.addEventListener('focus', function () { hl(tr.getAttribute('data-row')); });
+      tr.addEventListener('mouseleave', function () { hl(null); });
+      tr.addEventListener('blur', function () { hl(null); });
+    });
+  }
+
+  /* first frame: arm at zero with a sample log */
+  drawBB();
+  render();
+  log('Group 21 robotic arm, demonstration', 'h');
+  posLine('zero');
+  log('Pick a sketch and press "Run sketch" to watch what it does to the arm.', 'd');
+})();
+</script>

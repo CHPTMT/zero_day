@@ -2,7 +2,8 @@
  * TEST: all sensors at once (Group 21 arm). Servos are not moved.
  *
  * Every half second prints one line:
- *   distance (cm) and present / empty | colour raw, normalised and class |
+ *   distance (cm) and present / empty | colour raw, normalised, class,
+ *   colour temperature (K) and primary colour (strongest channel) |
  *   sound peak to peak amplitude and indicator level
  * The external LED for the detected colour lights if the LEDs are wired.
  *
@@ -182,6 +183,11 @@ void loop() {
     Serial.print(F(" n ")); Serial.print(n[0], 2); Serial.print(' ');
     Serial.print(n[1], 2); Serial.print(' '); Serial.print(n[2], 2);
     Serial.print(F(" -> ")); Serial.print(col == 'R' ? F("RED") : (col == 'G' ? F("GREEN") : F("BLUE")));
+    // Colour temperature and the strongest raw channel (primary colour)
+    Serial.print(F(" temp ")); Serial.print(tcs.calculateColorTemperature_dn40(raw[0], raw[1], raw[2], raw[3]));
+    Serial.print(F("K primary "));
+    if (raw[0] >= raw[1] && raw[0] >= raw[2]) Serial.print(F("RED"));
+    else Serial.print(raw[1] >= raw[2] ? F("GREEN") : F("BLUE"));
     showLed(col);
   } else {
     Serial.print(F("missing"));

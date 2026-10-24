@@ -46,3 +46,8 @@ The controller works out the joint angles for each station from these dimensions
 The Morse unit is 300 ms (dot 300 ms, dash 900 ms). The receiver splits dots from dashes at 600 ms and ends a word after 1.5 s of silence. A simulation of the arm timing into the receiver code decodes all 10 brief words correctly with press timing errors up to about 250 ms, including contact bounce.
 
 Wiring: `docs/wiring.md`. Calibration order and day checklist: `docs/demo_day.md`.
+
+## Simulation
+
+- `simulation/arm_bench.html`: open in a browser. Animated side and plan views of the arm using the same joint maths as the firmware, a picker that plays each sketch (demo, servo test, sensor test, combined test) with the serial output it prints, adjustable test conditions, and a breadboard wiring view with the pin map.
+- `simulation/wokwi/`: files to run the real sketch on wokwi.com with simulated servos, ultrasonic, LEDs and a potentiometer in place of the sound sensor. See its README.
