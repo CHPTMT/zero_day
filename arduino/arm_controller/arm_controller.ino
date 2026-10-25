@@ -221,10 +221,10 @@ const uint16_t TASK_GAP_MS     = 2000;  // pause after a task's end beeps
 // SENSOR THRESHOLDS
 // ======================================================================
 // Detection window for each point, in cm from the ultrasonic face. The arm
-// stops 10 cm from each point, so an object there reads about 10 cm.
+// stops 10 cm from A and 7 cm from B, so an object reads about 10 or 7 cm.
 //   MIN 3: the HC-SR04 cannot measure closer than about 2 to 3 cm; nearer
 //          readings are noise.
-//   MAX 15: 10 cm standoff plus 5 cm for positioning error. Going further
+//   MAX 15: the standoff plus a margin for positioning error. Going further
 //          (20 cm or more) lets the 15 degree cone reach the stand or plate
 //          behind the point and report an object that is not there.
 // Check on the day: run test_combined with nothing at A and B and note the
