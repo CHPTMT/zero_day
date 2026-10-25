@@ -10,9 +10,9 @@
  *   press 2 units or longer     -> dash
  *   release longer than 2 units -> end of letter
  *   release longer than 5 units -> end of word, word shown on the LCD
- * With MORSE_UNIT_MS = 300 a dot is 300 ms and a dash 900 ms. The split
- * points sit halfway between the ideal timings, so servo lag of up to about
- * 250 ms still decodes correctly. Hand presses at a similar pace also work,
+ * With MORSE_UNIT_MS = 600 a dot is 600 ms and a dash 1800 ms. The split
+ * points sit halfway between the ideal timings, so a press or gap up to about
+ * 550 ms off still decodes correctly. Hand presses at a similar pace also work,
  * so markers can test their own words.
  *
  * Wiring
@@ -39,7 +39,7 @@ LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 // ----------------------------------------------------------------------
 // SETTINGS (MORSE_UNIT_MS must match arm_controller.ino)
 // ----------------------------------------------------------------------
-const uint16_t MORSE_UNIT_MS  = 300;
+const uint16_t MORSE_UNIT_MS  = 600;   // two times slower, to go easy on the arm
 const uint16_t DASH_MIN_MS    = 2 * MORSE_UNIT_MS;  // press at least this long = dash
 const uint16_t LETTER_GAP_MS  = 2 * MORSE_UNIT_MS;  // silence that ends a letter
 const uint16_t WORD_GAP_MS    = 5 * MORSE_UNIT_MS;  // silence that ends a word

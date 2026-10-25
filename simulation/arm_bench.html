@@ -384,7 +384,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
   };
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 300, GEST = 6, GEST_MS = 900, GEST_REPS = 2;
+  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 6, GEST_MS = 900, GEST_REPS = 2;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -945,13 +945,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       for (var c = 0; c < code.length; c++) {
         txt += code[c] === '.' ? ' short press' : ' long press';
         setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
-        snap(prs); btnOn = true; render();
-        await sleep(code[c] === '.' ? UNIT : 3 * UNIT, id);
-        snap(hov); btnOn = false; render();
-        if (c < code.length - 1) await sleep(UNIT, id);
+        // eased onto the button, held, eased off (as pressFor() in arm_controller.ino)
+        btnOn = true; await moveTo(prs, PRESS_MOVE, id);
+        await sleep((code[c] === '.' ? UNIT : 3 * UNIT) - PRESS_MOVE, id);
+        await moveTo(hov, PRESS_MOVE, id); btnOn = false; render();
+        if (c < code.length - 1) await sleep(UNIT - PRESS_MOVE, id);
       }
       log(txt);
-      if (i < word.length - 1) await sleep(3 * UNIT, id);
+      if (i < word.length - 1) await sleep(3 * UNIT - PRESS_MOVE, id);
     }
     await sleep(8 * UNIT, id);
     log('Finished sending ' + word + '. The receiver should now show it on its screen.');
@@ -1059,10 +1060,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('Short press on the button (300 ms, a Morse dot).'); setLive('morse', 'short press');
-    snap(prs); btnOn = true; render(); await sleep(300, id); snap(hov); btnOn = false; render(); await sleep(600, id);
-    log('Long press on the button (900 ms, a Morse dash).'); setLive('morse', 'long press');
-    snap(prs); btnOn = true; render(); await sleep(900, id); snap(hov); btnOn = false; render(); await sleep(600, id);
+    log('Short press on the button (600 ms, a Morse dot).'); setLive('morse', 'short press');
+    btnOn = true; await moveTo(prs, 300, id); await sleep(300, id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
+    log('Long press on the button (1800 ms, a Morse dash).'); setLive('morse', 'long press');
+    btnOn = true; await moveTo(prs, 300, id); await sleep(1500, id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
     posLine('E hover');
     setTarget(null);
     await goToPose(ZERO, 'zero', id);

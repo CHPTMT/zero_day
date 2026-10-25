@@ -206,7 +206,11 @@ const uint16_t SOUND_WINDOW_MS = 150;
 const unsigned long SOUND_TIMEOUT_MS = 3000;
 const uint16_t SOUND_HOLD_MS   = 3000;
 
-const uint16_t MORSE_UNIT_MS  = 300;   // must match morse_receiver.ino
+// Morse timing, two times slower than before to go easy on the arm. A dot is
+// 1 unit, a dash 3, the gap inside a letter 1 and between letters 3. The
+// receiver must split dots from dashes, and letters, at 2 units (1200 ms).
+const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
+const uint16_t PRESS_MOVE_MS  = 300;   // smooth move onto and off the button, instead of a snap
 const int16_t  PRESS_EXTRA_MS = 0;
 
 // ======================================================================
@@ -267,8 +271,8 @@ void writePose(const Pose &p) {
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]);
 }
 
-// Smooth move of all joints together with cosine easing.
-void moveTo(const Pose &target, uint16_t ms) {
+// Smooth move of all joints together with cosine easing. Returns how long it took.
+unsigned long moveTo(const Pose &target, uint16_t ms) {
   Pose start = cur;
   // ms is the shortest time allowed. Long moves take longer, so that no joint
   // ever goes faster than MAX_SPEED_DEG_S (cosine easing peaks at pi/2 times
@@ -282,6 +286,7 @@ void moveTo(const Pose &target, uint16_t ms) {
     for (uint8_t j = 0; j < NJ; j++) writeJoint(j, start.a[j] + (target.a[j] - start.a[j]) * e);
     delay(STEP_MS);
   }
+  return dur;
 }
 
 void moveJoint(uint8_t j, float rel, uint16_t ms) {
@@ -620,12 +625,20 @@ const char *morseFor(char c) {
 Pose pressPose, hoverPose;
 
 // Snap (no easing) so the contact time matches the commanded time.
+// One press: ease down onto the button, hold, ease back up. The button closes
+// about halfway down each move, so the hold is cut by one move time to keep
+// the press the receiver sees close to `ms`.
 void pressFor(uint16_t ms) {
-  writePose(pressPose);
   digitalWrite(PIN_STATUS, HIGH);
-  delay(max(0, (int)ms + PRESS_EXTRA_MS));
-  writePose(hoverPose);
+  unsigned long ramp = moveTo(pressPose, PRESS_MOVE_MS);
+  delay(max(0L, (long)ms + PRESS_EXTRA_MS - (long)ramp));
+  moveTo(hoverPose, PRESS_MOVE_MS);
   digitalWrite(PIN_STATUS, LOW);
+}
+
+// Silence between presses, cut the same way (half a move up, half a move down).
+void pauseFor(uint16_t ms) {
+  delay(max(0L, (long)ms - (long)PRESS_MOVE_MS));
 }
 
 void sendMorseWord(const char *word) {
@@ -637,10 +650,10 @@ void sendMorseWord(const char *word) {
     for (uint8_t k = 0; code[k]; k++) {
       Serial.print(code[k] == '.' ? F(" short press") : F(" long press"));
       pressFor(code[k] == '.' ? MORSE_UNIT_MS : 3 * MORSE_UNIT_MS);
-      if (code[k + 1]) delay(MORSE_UNIT_MS);
+      if (code[k + 1]) pauseFor(MORSE_UNIT_MS);
     }
     Serial.println();
-    if (word[i + 1]) delay(3 * MORSE_UNIT_MS);
+    if (word[i + 1]) pauseFor(3 * MORSE_UNIT_MS);
   }
   delay(8 * MORSE_UNIT_MS);   // receiver ends the word after the silence
   Serial.print(F("Finished sending ")); Serial.print(word); Serial.println(F(". The receiver should now show it on its screen."));

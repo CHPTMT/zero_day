@@ -10,6 +10,7 @@ Demonstration: Monday 26 October 2026, NWE Lab, Session 11 (12:00 to 12:10), Sta
 |---|---|---|
 | `arduino/arm_controller` | Uno 1 | Full autonomous demonstration, Tasks 1 to 4, everything printed to Serial |
 | `arduino/morse_receiver` | Uno 2 | Decodes the button presses and shows the word on the LCD |
+| `arduino/morse_receiver_i2c` | Uno 2 | The team's own receiver, timing matched to the arm (use one receiver or the other) |
 | `arduino/tests/test_servos` | Uno 1 | Zero hold, direction check, full sweep of every joint, manual control |
 | `arduino/tests/test_sensors` | Uno 1 | Distance, colour and sound together, with colour and tap calibration |
 | `arduino/tests/test_combined` | Uno 1 | Every station, gesture and press in order, printing angles and readings |
@@ -43,7 +44,7 @@ The controller works out the joint angles for each station from these dimensions
 
 `arm_controller` is a switch-case state machine: START, TASK1 to TASK4, FINISH, IDLE. Every sensor read has a timeout (ultrasonic 25 ms per ping, sound 3 s) and a safe default, so a bad reading never stops the run. Each task can be turned off with `RUN_TASK_x` as a fallback.
 
-The Morse unit is 300 ms (dot 300 ms, dash 900 ms). The receiver splits dots from dashes at 600 ms and ends a word after 1.5 s of silence. A simulation of the arm timing into the receiver code decodes all 10 brief words correctly with press timing errors up to about 250 ms, including contact bounce.
+The Morse timing is two times slower than first planned, to go easy on the arm: unit 600 ms, so a dot is 600 ms, a dash 1800 ms, 600 ms between the presses of a letter and 1800 ms between letters. Each press eases onto the button and off it over 300 ms instead of snapping. Both receivers split dots from dashes, and letters, at 1200 ms: `morse_receiver` (the repo version) and `morse_receiver_i2c` (the team's version, with its thresholds updated to `DOT_MAX` 1200, `LETTER_GAP` 1200, `WORD_TIMEOUT` 6000). A simulation of the eased arm presses into both receivers decodes all 10 brief words, with the button closing anywhere from 20% to 90% of the way down and with contact bounce.
 
 Wiring: `docs/wiring.md`. Calibration order and day checklist: `docs/demo_day.md`.
 

@@ -12,7 +12,7 @@
  *   4. BOX gesture
  *   5. Point C, read colour
  *   6. Point D, read sound level, then indicator low, middle, high
- *   7. Point E hover, one dot press, one dash press
+ *   7. Point E hover, one dot press, one dash press (600 / 1800 ms, eased on and off)
  *   8. Back to zero
  * Type any key in the Serial Monitor (115200) to run it again.
  *
@@ -372,10 +372,10 @@ void runAll() {
   Pose hover, press;
   if (stationPose(ST_E_HOVER, hover) && stationPose(ST_E_PRESS, press)) {
     goToPose(hover, "Point E (above the button)");
-    Serial.println(F("Short press on the button (300 ms, a Morse dot)."));
-    writePose(press); delay(300); writePose(hover); delay(600);
-    Serial.println(F("Long press on the button (900 ms, a Morse dash)."));
-    writePose(press); delay(900); writePose(hover); delay(600);
+    Serial.println(F("Short press on the button (600 ms, a Morse dot)."));
+    moveTo(press, 300); delay(300); moveTo(hover, 300); delay(900);   // same as a 600 ms dot in arm_controller
+    Serial.println(F("Long press on the button (1800 ms, a Morse dash)."));
+    moveTo(press, 300); delay(1500); moveTo(hover, 300); delay(900);  // same as a 1800 ms dash
     printPosition("Point E (above the button)");
   }
 
