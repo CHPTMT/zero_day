@@ -50,7 +50,10 @@ struct Tool {
 const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
 const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false};  // 83 mm out (the tip), 45 mm to your right
-const Tool TOOL_PUSHER = {"pusher",      0, 70,   0, true};   // 50 mm bar under the arm end: tip 20 + 50 = 70 mm below the arm's centre line
+const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 30 mm bar under the arm end: tip 20 + 30 = 50 mm below the arm's centre line
+// 30 mm bar chosen: at Point E it presses within 2 deg of straight down with the
+// second arm at about +25, well inside its +45 limit. Longer bars tilt more
+// (50 mm: 8 deg, 100 mm: 21 deg) and push the second arm closer to its limit.
 // Pusher note: if a pose ever needs the second arm past +45 at Point E, the
 // arm holds +45 and sets the pusher height instead (see pressAtLimit).
 
