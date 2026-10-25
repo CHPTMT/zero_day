@@ -42,24 +42,6 @@ const int   SERVO_MIN_US = 500, SERVO_MAX_US = 2500;
 const float BASE_GEAR_RATIO = 1.0;
 int zeroUs[NS];
 
-void loadZeros() {
-  uint8_t mark = EEPROM.read(8);
-  bool saved = mark == 0x5A || mark == 0x5B;
-  for (uint8_t i = 0; i < NS; i++) {
-    int16_t v = ZERO_US_DEFAULT[i];
-    if (saved) EEPROM.get(10 + 2 * i, v);
-    zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
-  }
-  if (mark == 0x5B) {   // directions saved too (stored as 1 or 0xFF for -1)
-    dirBase  = EEPROM.read(18) == 0xFF ? -1 : 1;
-    dirMain  = EEPROM.read(19) == 0xFF ? -1 : 1;
-    dirElbow = EEPROM.read(20) == 0xFF ? -1 : 1;
-  }
-}
-
-int pulseAt(uint8_t s, float deg) {
-  return constrain((int)round(zeroUs[s] + deg * US_PER_DEG), SERVO_MIN_US, SERVO_MAX_US);
-}
 
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
@@ -123,6 +105,25 @@ Adafruit_TCS34725 tcs(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
 bool tcsOk = false;
 
 // ---------------- servos ----------------
+
+void loadZeros() {
+  uint8_t mark = EEPROM.read(8);
+  bool saved = mark == 0x5A || mark == 0x5B;
+  for (uint8_t i = 0; i < NS; i++) {
+    int16_t v = ZERO_US_DEFAULT[i];
+    if (saved) EEPROM.get(10 + 2 * i, v);
+    zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
+  }
+  if (mark == 0x5B) {   // directions saved too (stored as 1 or 0xFF for -1)
+    dirBase  = EEPROM.read(18) == 0xFF ? -1 : 1;
+    dirMain  = EEPROM.read(19) == 0xFF ? -1 : 1;
+    dirElbow = EEPROM.read(20) == 0xFF ? -1 : 1;
+  }
+}
+
+int pulseAt(uint8_t s, float deg) {
+  return constrain((int)round(zeroUs[s] + deg * US_PER_DEG), SERVO_MIN_US, SERVO_MAX_US);
+}
 
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
