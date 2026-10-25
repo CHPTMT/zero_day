@@ -15,13 +15,15 @@
 | Sound sensor | VCC / GND | 5 V / GND |
 | Colour sensor TCS34725 | SDA / SCL | A4 / A5 |
 | Colour sensor | VCC / GND | 5 V / GND |
-| RGB LED, common anode | long leg (anode) | 5 V |
-| RGB LED | red leg, through 220 ohm | D8 |
-| RGB LED | green leg, through 220 ohm | D9 |
-| RGB LED | blue leg, through 220 ohm | D10 |
+| Red LED, through 220 ohm | long leg / short leg | D8 / GND |
+| Green LED, through 220 ohm | long leg / short leg | D9 / GND |
+| Blue LED, through 220 ohm | long leg / short leg | D10 / GND |
+| Beeper (buzzer) | + / - | D11 / GND |
 | Status | onboard LED | D13 |
 
-The RGB LED is common anode, so a pin set LOW lights that colour. At Point C the LED follows what the colour sensor sees for 2 s, then holds the final colour to the end of the run. If the LED shows the opposite of the paper (everything except the right colour), it is common cathode: set `LED_COMMON_ANODE` to false and move the long leg to GND. If red and blue are swapped, swap the D8 and D10 wires.
+Each LED lights when its pin is HIGH. At start up the arm lights red, green and blue alone for 1 s each with a beep, so a swapped or dead LED shows straight away. At Point C the LEDs follow what the colour sensor sees for 2 s, then the LED for the paper colour stays on to the end of the run.
+
+The beeper marks each task: Task N beeps N times at its start and N times at its end, then the arm waits 2 s. The code drives it with a 2.5 kHz tone, which suits a passive buzzer. With an active buzzer (one that beeps on its own from plain 5 V) set `BUZZER_PASSIVE` to false. The tone uses Timer2, which the servos do not use.
 
 The two main arm servos face each other, so the code always drives them in opposite directions: left = zero + angle, right = zero - angle.
 

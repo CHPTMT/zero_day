@@ -26,6 +26,7 @@
   --w-yellow: #d6b31b;
   --w-brown: #7a4b24;
   --w-purple: #7b4fb0;
+  --w-pink: #d0559a;
   --w-green: #2f8a3c;
   --w-blue: #2c63c9;
   --w-grey: #8b8f93;
@@ -212,7 +213,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       <div class="lv"><b>Colour read</b><span id="lvCol">-</span></div>
       <div class="lv"><b>Sound level</b><span id="lvSnd">-</span></div>
       <div class="lv"><b>Morse</b><span id="lvMorse">-</span></div>
-      <div class="lv"><b>LEDs / button</b><span class="lamps"><span class="dot" id="ledR"></span><span class="dot" id="ledG"></span><span class="dot" id="ledB"></span><span class="dot" id="btnLamp"></span></span></div>
+      <div class="lv"><b>LEDs / button / beep</b><span class="lamps"><span class="dot" id="ledR"></span><span class="dot" id="ledG"></span><span class="dot" id="ledB"></span><span class="dot" id="btnLamp"></span><span class="dot" id="bzLamp"></span></span></div>
     </div>
     </div>
 
@@ -294,7 +295,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
           <button class="btn stop" id="stopBtn" type="button" disabled>Stop</button>
           <button class="btn" id="speedBtn" type="button">Speed 1x</button>
         </div>
-        <div class="status"><span id="stateTxt">Idle</span><span>RGB LED: red D8, green D9, blue D10 (pin LOW = on), then the button</span></div>
+        <div class="status"><span id="stateTxt">Idle</span><span>LEDs: red D8, green D9, blue D10, then the button and the beeper (D11)</span></div>
       </div>
 
       <div class="termwrap">
@@ -380,18 +381,18 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 40,  tool: TOOLS.SND },
     INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60,  tool: TOOLS.US },
     INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 60,  tool: TOOLS.US },
-    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 30,  tool: TOOLS.PUSH },
+    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 40,  tool: TOOLS.PUSH },
     EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
   };
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
+  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 40, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
 
   var cur = [0, 0, 0];
   var target = null;   // {theta, r, z} being aimed at
-  var leds = { R: false, G: false, B: false }, btnOn = false;
+  var leds = { R: false, G: false, B: false }, btnOn = false, bzOn = false;
   var live = { dist: '-', col: '-', snd: '-', morse: '-' };   // latest sensor readings for the live strip
   function setLive(k, v) { live[k] = v; renderLive(); }
 
@@ -788,6 +789,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     $('ledG').className = 'dot' + (leds.G ? ' on-g' : '');
     $('ledB').className = 'dot' + (leds.B ? ' on-b' : '');
     $('btnLamp').className = 'dot' + (btnOn ? ' on-btn' : '');
+    $('bzLamp').className = 'dot' + (bzOn ? ' on-btn' : '');
   }
 
   /* ============ serial monitor ============ */
@@ -868,22 +870,44 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     if (p) await goToPose(p, st.name, id);
     return p;
   }
-  function swingCentre(j) { return clamp(cur[j], MIN[j] + GEST, MAX[j] - GEST); }
-  async function nod(j, name, id) {
-    log('Gesture: ' + name);
-    var home = cur[j], c = swingCentre(j);
-    for (var i = 0; i < GEST_REPS; i++) {
-      var a = cur.slice(); a[j] = c + GEST; await moveTo(a, GEST_MS, id);
-      a = cur.slice(); a[j] = c - GEST; await moveTo(a, GEST_MS, id);
-    }
-    var b = cur.slice(); b[j] = home; await moveTo(b, GEST_MS, id);
+  // Same as shiftedPose(): the station's sensor aimed dz mm higher (or lower), base at baseRel
+  function shiftedPose(st, dz, baseRel) {
+    var t = Object.assign({}, st); t.z = st.z + dz;
+    var p = toolIK(t); if (!p) return null;
+    p[0] = baseRel;
+    for (var j = 0; j < 3; j++) p[j] = clamp(p[j], MIN[j], MAX[j]);
+    return p;
+  }
+  function baseCentre() { return clamp(cur[0], MIN[0] + GEST + 3, MAX[0] - GEST - 3); }
+  async function gStep(p, ms, id) { await moveTo(p, ms, id); await sleep(GEST_PAUSE, id); }
+  async function gestureYes(st, id) {
+    log('Gesture: YES, nodding (sensor moves straight up and down twice).');
+    var home = cur.slice(), up = shiftedPose(st, GEST_UP, cur[0]), dn = shiftedPose(st, -GEST_UP, cur[0]);
+    for (var i = 0; i < GEST_REPS; i++) { await gStep(up, GEST_MS, id); await gStep(dn, GEST_MS, id); }
+    await gStep(home, GEST_MS, id);
+  }
+  async function gestureNo(id) {
+    log('Gesture: NO, shaking (base turns left and right twice).');
+    var home = cur.slice(), c = baseCentre(), l = cur.slice(), r = cur.slice(); l[0] = c + GEST; r[0] = c - GEST;
+    for (var i = 0; i < GEST_REPS; i++) { await gStep(l, GEST_MS, id); await gStep(r, GEST_MS, id); }
+    await gStep(home, GEST_MS, id);
   }
   var boxWhy = false;
-  async function box(id) {
-    log(boxWhy ? 'Gesture: drawing a BOX with the base and main arm, because there was no object at A or B.' : 'Gesture: drawing a BOX with the base and main arm.');
-    var home = cur.slice(), cb = swingCentre(0), cm = swingCentre(1), k = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]];
-    for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cm + k[i][1] * GEST, cur[2]], GEST_MS * 2, id);
-    await moveTo(home, GEST_MS * 2, id);
+  async function gestureBox(st, id) {
+    log(boxWhy ? 'Gesture: BOX, nothing at A or B (sensor traces a square: up, across, down, back).' : 'Gesture: BOX (sensor traces a square: up, across, down, back).');
+    var home = cur.slice(), c = baseCentre(), k = [[1, 1], [-1, 1], [-1, -1], [1, -1], [1, 1]];
+    for (var i = 0; i < 5; i++) await gStep(shiftedPose(st, BOX_LIFT + k[i][1] * GEST_UP, c + k[i][0] * GEST), GEST_MS * 2, id);
+    await gStep(home, GEST_MS * 2, id);
+  }
+  // Same as beeps() and runTask(): task n beeps n times at its start and its end, then a 2 s pause
+  async function beeps(n, id) {
+    for (var i = 0; i < n; i++) { bzOn = true; render(); await sleep(120, id); bzOn = false; render(); await sleep(180, id); }
+  }
+  async function runTask(n, fn, id) {
+    log('Beep x' + n + ': start of Task ' + n + '.', 'd'); await beeps(n, id);
+    await fn();
+    log('Beep x' + n + ': end of Task ' + n + '.', 'd'); await beeps(n, id);
+    await sleep(2000, id);
   }
 
   /* ============ simulated sensors ============ */
@@ -900,10 +924,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     log('Colour sensor: connected.');
     for (var lc of ['R', 'G', 'B']) {
       log('LED check: only ' + nameOf(lc) + ' should be lit now (' + { R: 'D8', G: 'D9', B: 'D10' }[lc] + ').');
-      leds = { R: lc === 'R', G: lc === 'G', B: lc === 'B' }; render(); await sleep(1000, id);
+      leds = { R: lc === 'R', G: lc === 'G', B: lc === 'B' }; render(); await beeps(1, id); await sleep(1000, id);
     }
     leds = { R: false, G: false, B: false }; render();
-    log('LED check done. If you saw a mixed colour, flip LED_COMMON_ANODE.');
+    log('LED check done. Each LED should have lit alone, in the order red, green, blue, with a beep each.');
     await moveTo(ZERO, 600, id);
     setTarget(null);
     posLine('zero');
@@ -914,75 +938,84 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     log('');
     log('---------- Starting the run ----------', 'h');
 
+    var dA, rA, dB, rB, amp, lv;
     // Task 1
-    log(''); log('TASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor.', 'h');
-    await goToStation(ST.A, id);
-    var dA = distAt(obj === 'A' || obj === 'AB'), rA = dA >= 2 && dA <= US_MAX;
-    log(distLine('Point A', dA, rA));
-    setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
-    if (rA) await nod(1, 'nodding YES (main arm leans forward and back).', id);
-    await liftClear(id);
-    await goToStation(ST.B, id);
-    var dB = distAt(obj === 'B' || obj === 'AB'), rB = dB >= 2 && dB <= US_MAX;
-    log(distLine('Point B', dB, rB));
-    setLive('dist', 'B ' + (dB < 0 ? 'no echo' : f(dB) + ' cm') + (rB ? ' object' : ' empty'));
-    if (rB) await nod(0, 'shaking NO (base turns left and right).', id);
-    if (!rA && !rB) { boxWhy = true; await box(id); boxWhy = false; }
+    await runTask(1, async function () {
+      log(''); log('TASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor.', 'h');
+      await goToStation(ST.A, id);
+      dA = distAt(obj === 'A' || obj === 'AB'); rA = dA >= US_MIN && dA <= US_MAX;
+      log(distLine('Point A', dA, rA));
+      setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
+      if (rA) await gestureYes(ST.A, id);
+      await liftClear(id);
+      await goToStation(ST.B, id);
+      dB = distAt(obj === 'B' || obj === 'AB'); rB = dB >= US_MIN && dB <= US_MAX;
+      log(distLine('Point B', dB, rB));
+      setLive('dist', 'B ' + (dB < 0 ? 'no echo' : f(dB) + ' cm') + (rB ? ' object' : ' empty'));
+      if (rB) await gestureNo(id);
+      if (!rA && !rB) { boxWhy = true; await gestureBox(ST.B, id); boxWhy = false; }
+    }, id);
 
     // Task 2
-    log(''); log('TASK 2 of 4: reading the colour of the paper at Point C.', 'h');
-    await goToStation(ST.C, id);
-    log('The RGB LED now follows what the colour sensor sees for 2 seconds.');
-    leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
-    await sleep(2000, id);
-    var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
-    log('Colour sensor readings: red ' + pr[0] + ', green ' + pr[1] + ', blue ' + pr[2] + ', overall brightness ' + pr[3] + '.');
-    log('Colour temperature ' + TEMP[col] + ' K, light level ' + Math.round(pr[1] * 0.3) + ' lux, strongest colour channel: ' + nameOf(col) + '.');
-    log('Share of each colour: red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) + '%.');
-    log('Point C: the paper is ' + nameOf(col) + '. The RGB LED now shows ' + nameOf(col) + '.');
-    setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
-    leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
+    await runTask(2, async function () {
+      log(''); log('TASK 2 of 4: reading the colour of the paper at Point C.', 'h');
+      await goToStation(ST.C, id);
+      log('The LEDs now follow what the colour sensor sees for 2 seconds.');
+      leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
+      await sleep(2000, id);
+      var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
+      log('Colour sensor readings: red ' + pr[0] + ', green ' + pr[1] + ', blue ' + pr[2] + ', overall brightness ' + pr[3] + '.');
+      log('Colour temperature ' + TEMP[col] + ' K, light level ' + Math.round(pr[1] * 0.3) + ' lux, strongest colour channel: ' + nameOf(col) + '.');
+      log('Share of each colour: red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) + '%.');
+      log('Point C: the paper is ' + nameOf(col) + '. The ' + nameOf(col) + ' LED is now on.');
+      setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
+      leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
+    }, id);
 
     // Task 3
-    log(''); log('TASK 3 of 4: measuring a tap at Point D and showing its loudness on the indicator.', 'h');
-    await goToStation(ST.D, id);
-    log('Listening for a tap (up to 3 seconds)...');
-    await sleep(tap > 0 ? 900 : 3000, id);
-    var amp = tap >= 40 ? tap : -1;
-    var lv = amp < 0 ? 0 : clamp((amp - AMP_MIN) / (AMP_MAX - AMP_MIN), 0, 1);
-    log(amp < 0 ? 'No tap heard in 3 seconds. Pointing at the bottom of the scale.' : 'Heard a tap: loudness ' + amp + ' out of 1023, which is ' + Math.round(lv * 100) + '% of the scale.');
-    setLive('snd', (amp < 0 ? 'no tap' : amp) + ', ' + Math.round(lv * 100) + '%');
-    var zp = IND.zLo + lv * (IND.zHi - IND.zLo);
-    var ind = { name: 'indicator', theta: IND.theta, r: IND.r, z: zp, s: IND.s, tool: TOOLS.US };
-    var p = stationPose(ind);
-    setTarget(ind, 'indicator ' + f(zp, 0));
-    if (p) { await moveTo(p, 1200, id); posLine('indicator'); }
-    log('Pointing at the indicator ' + f(zp, 0) + ' mm above the table.');
-    await sleep(3000, id);
+    await runTask(3, async function () {
+      log(''); log('TASK 3 of 4: measuring a tap at Point D and showing its loudness on the indicator.', 'h');
+      await goToStation(ST.D, id);
+      log('Listening for a tap (up to 3 seconds)...');
+      await sleep(tap > 0 ? 900 : 3000, id);
+      amp = tap >= 40 ? tap : -1;
+      lv = amp < 0 ? 0 : clamp((amp - AMP_MIN) / (AMP_MAX - AMP_MIN), 0, 1);
+      log(amp < 0 ? 'No tap heard in 3 seconds. Pointing at the bottom of the scale.' : 'Heard a tap: loudness ' + amp + ' out of 1023, which is ' + Math.round(lv * 100) + '% of the scale.');
+      setLive('snd', (amp < 0 ? 'no tap' : amp) + ', ' + Math.round(lv * 100) + '%');
+      var zp = IND.zLo + lv * (IND.zHi - IND.zLo);
+      var ind = { name: 'indicator', theta: IND.theta, r: IND.r, z: zp, s: IND.s, tool: TOOLS.US };
+      var p = stationPose(ind);
+      setTarget(ind, 'indicator ' + f(zp, 0));
+      if (p) { await moveTo(p, 1200, id); posLine('indicator'); }
+      log('Pointing at the indicator ' + f(zp, 0) + ' mm above the table.');
+      await sleep(4000, id);
+    }, id);
 
     // Task 4
-    log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
-    var prs = stationPose(ST.EP), hov = eHover(prs), ramp = PRESS_MOVE;
-    setTarget(ST.EH, 'E button');
-    await goToPose(hov, 'E hover', id);
-    log('Each press leans the main arm ' + f(prs[1] - hov[1]) + ' degrees forward onto the button and back.');
-    log('Sending the word ' + word + ' in Morse code on the button.');
-    for (var i = 0; i < word.length; i++) {
-      var code = MORSE[word[i]], txt = '   Letter ' + word[i] + ':';
-      for (var c = 0; c < code.length; c++) {
-        txt += code[c] === '.' ? ' short press' : ' long press';
-        setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
-        // eased onto the button, held, eased off (as pressFor() in arm_controller.ino)
-        btnOn = true; ramp = await moveTo(prs, PRESS_MOVE, id);
-        await sleep(Math.max(0, (code[c] === '.' ? UNIT : 3 * UNIT) - ramp), id);
-        await moveTo(hov, PRESS_MOVE, id); btnOn = false; render();
-        if (c < code.length - 1) await sleep(Math.max(0, UNIT - ramp), id);
+    await runTask(4, async function () {
+      log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
+      var prs = stationPose(ST.EP), hov = stationPose(ST.EH), ramp = PRESS_MOVE;
+      setTarget(ST.EH, 'E button');
+      await goToPose(hov, 'E hover', id);
+      log('Each press moves the pusher ' + (ST.EH.s - ST.EP.s) + ' mm down onto the button and back up (main arm ' + f(prs[1] - hov[1]) + ' degrees, second arm ' + f(prs[2] - hov[2]) + ' degrees).');
+      log('Sending the word ' + word + ' in Morse code on the button.');
+      for (var i = 0; i < word.length; i++) {
+        var code = MORSE[word[i]], txt = '   Letter ' + word[i] + ':';
+        for (var c = 0; c < code.length; c++) {
+          txt += code[c] === '.' ? ' short press (dot)' : ' long press (dash)';
+          setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
+          // eased onto the button, held, eased off (as pressFor() in arm_controller.ino)
+          btnOn = true; ramp = await moveTo(prs, PRESS_MOVE, id);
+          await sleep(Math.max(0, (code[c] === '.' ? UNIT : 3 * UNIT) - ramp), id);
+          await moveTo(hov, PRESS_MOVE, id); btnOn = false; render();
+          if (c < code.length - 1) await sleep(Math.max(0, UNIT - ramp), id);
+        }
+        log(txt);
+        if (i < word.length - 1) await sleep(3 * UNIT - ramp, id);
       }
-      log(txt);
-      if (i < word.length - 1) await sleep(3 * UNIT - ramp, id);
-    }
-    await sleep(8 * UNIT, id);
-    log('Finished sending ' + word + '. The receiver should now show it on its screen.');
+      await sleep(8 * UNIT, id);
+      log('Finished sending ' + word + '. The receiver should now show it on its screen.');
+    }, id);
 
     // Finish
     setTarget(null);
@@ -1039,6 +1072,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   async function testSensors(id) {
     setTarget(null);
     var obj = $('cObj').value, col = $('cCol').value, tap = +$('cTap').value;
+    log(''); log('LED and beeper check: RED LED with 1 beep, GREEN with 2, BLUE with 3.', 'h');
+    for (var q of [['R', 1], ['G', 2], ['B', 3]]) { leds = { R: q[0] === 'R', G: q[0] === 'G', B: q[0] === 'B' }; render(); await beeps(q[1], id); await sleep(1000, id); }
+    leds = { R: false, G: false, B: false }; render();
+    log('If an LED did not light, or another one lit with it, check its wire and resistor.');
     log(''); log('SENSOR TEST: reading all sensors twice a second. The arm does not move.', 'h');
     log('Colour sensor: connected.');
     log('Type r, g or b with that colour paper under the sensor to calibrate it, or t for a tap test.');
@@ -1048,7 +1085,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       var snd = (i === 6 && tap > 0) ? tap : 4 + Math.round(Math.random() * 6);
       var cn = nameOf(col);
       setLive('dist', d < 0 ? 'no echo' : f(d) + ' cm'); setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K'); setLive('snd', snd);
-      log('Distance: ' + (d < 0 ? 'no echo' : f(d) + ' cm') + (d >= 2 && d <= US_MAX ? ' (object found)' : ' (nothing there)') +
+      log('Distance: ' + (d < 0 ? 'no echo' : f(d) + ' cm') + (d >= US_MIN && d <= US_MAX ? ' (object found)' : ' (nothing there)') +
           '.  Colour: ' + cn + ' (red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) +
           '%, brightness ' + pr[3] + ', ' + TEMP[col] + ' K, strongest channel ' + cn + ').  Sound level: ' + snd + ' out of 1023.');
       leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
@@ -1064,11 +1101,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await moveTo(ZERO, 1200, id);
     posLine('zero'); log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
     await sleep(5000, id);
-    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor.' : ': the ultrasonic sensor measures ' + f(d) + ' cm.')); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
-    if (await goToStation(ST.A, id)) { dist('A'); await nod(1, 'nodding YES (main arm leans forward and back).', id); }
+    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor (counts as nothing there).' : ': the ultrasonic sensor measures ' + f(d) + ' cm, which the demo counts as ' + (d >= US_MIN && d <= US_MAX ? 'an object.' : 'nothing there.'))); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
+    if (await goToStation(ST.A, id)) { dist('A'); await gestureYes(ST.A, id); }
     log('Lifting clear before Point B.'); await moveTo([cur[0], 0, 15], 1200, id); await sleep(HOLD / 2, id);
-    if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'shaking NO (base turns left and right).', id); }
-    await box(id);
+    if (await goToStation(ST.B, id)) { dist('B'); await gestureNo(id); await gestureBox(ST.B, id); }
     if (await goToStation(ST.C, id)) {
       var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
       log('Colour sensor readings: red ' + pr[0] + ', green ' + pr[1] + ', blue ' + pr[2] + ', overall brightness ' + pr[3] + '.');
@@ -1085,10 +1121,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
       await goToStation(k, id); await sleep(1000, id);
     }
-    var prs = stationPose(ST.EP), hov = eHover(prs), rp;
+    var prs = stationPose(ST.EP), hov = stationPose(ST.EH), rp;
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('Each press leans the main arm ' + f(prs[1] - hov[1]) + ' degrees forward onto the button and back.');
+    log('Each press moves the pusher ' + (ST.EH.s - ST.EP.s) + ' mm straight down onto the button and back up.');
     log('Short press on the button (600 ms, a Morse dot).'); setLive('morse', 'short press');
     btnOn = true; rp = await moveTo(prs, 300, id); await sleep(Math.max(0, 600 - rp), id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
     log('Long press on the button (1800 ms, a Morse dash).'); setLive('morse', 'long press');
@@ -1135,7 +1171,6 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     el.addEventListener('click', function () {
       run(async function (id) {
         if (!b[1]) { setTarget(null); await goToPose(ZERO, 'zero', id); }
-        else if (b[1] === ST.EH) { var pp = stationPose(ST.EP); setTarget(ST.EH, 'E button'); if (pp) await goToPose(eHover(pp), 'E hover', id); }
         else await goToStation(b[1], id);
       }, 'Moving to ' + b[0]);
     });
@@ -1145,7 +1180,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     el.addEventListener('click', function () {
       var g = el.getAttribute('data-g');
       run(function (id) {
-        return g === 'yes' ? nod(1, 'nodding YES (main arm leans forward and back).', id) : g === 'no' ? nod(0, 'shaking NO (base turns left and right).', id) : box(id);
+        return g === 'yes' ? gestureYes(ST.A, id) : g === 'no' ? gestureNo(id) : gestureBox(ST.B, id);
       }, 'Gesture');
     });
   });
@@ -1206,8 +1241,8 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
   var UNO = { x: 30, y: 210, w: 230, h: 330 };
   var unoPins = {};
-  ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10'].forEach(function (n, i) { unoPins[n] = [UNO.x + UNO.w, UNO.y + 40 + i * 24]; });
-  ['A1', 'A4', 'A5'].forEach(function (n, i) { unoPins[n] = [UNO.x + UNO.w, UNO.y + 270 + i * 20]; });
+  ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10', 'D11'].forEach(function (n, i) { unoPins[n] = [UNO.x + UNO.w, UNO.y + 40 + i * 24]; });
+  ['A1', 'A4', 'A5'].forEach(function (n, i) { unoPins[n] = [UNO.x + UNO.w, UNO.y + 284 + i * 20]; });
   unoPins['5V'] = [UNO.x + 70, UNO.y + UNO.h];
   unoPins['GND'] = [UNO.x + 110, UNO.y + UNO.h];
 
@@ -1249,18 +1284,23 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   W('tcs', 'SCL', [985, 586], unoPins['A5'], '--w-green', 'A5');
   W('tcs', 'VIN', [1005, 586], rail(17, 'bot+'), '--w-red', 'bottom rail +');
   W('tcs', 'GND', [1025, 586], rail(18, 'bot-'), '--w-black', 'bottom rail -');
-  // RGB LED, common anode: legs in row b (red 6, anode 8, green 10, blue 12).
-  // Each colour leg crosses the gap through a 220 ohm resistor; the pin wire lands in row j.
-  W('ledA', 'anode (long leg), row 8j', hole(8, 'j'), rail(8, 'bot+'), '--w-red', 'bottom rail + (5 V)');
-  [['ledR', 'red leg, 220 ohm, row 6j', 'D8', 6], ['ledG', 'green leg, 220 ohm, row 10j', 'D9', 10], ['ledB', 'blue leg, 220 ohm, row 12j', 'D10', 12]].forEach(function (l) {
-    W(l[0], l[1], unoPins[l[2]], hole(l[3], 'j'), '--w-green', l[2], 'led');
+  // Three LEDs: long leg (anode) in row b of column c, short leg in column c + 1.
+  // A 220 ohm resistor crosses the centre gap in column c to the pin wire in row j;
+  // a link crosses the gap in column c + 1 and a wire takes it to the bottom rail -.
+  [['ledR', 'Red LED', 'D8', 5], ['ledG', 'Green LED', 'D9', 9], ['ledB', 'Blue LED', 'D10', 13]].forEach(function (l) {
+    W(l[0], 'long leg via 220 ohm, row ' + l[3] + 'j', unoPins[l[2]], hole(l[3], 'j'), '--w-green', l[2], 'led');
+    W(l[0], 'short leg, row ' + (l[3] + 1) + 'j', hole(l[3] + 1, 'j'), rail(l[3] + 1, 'bot-'), '--w-black', 'bottom rail - (GND)');
   });
+  // Beeper: + leg row c column 17, - leg column 19 linked across the gap to the rail
+  W('bz', '+ leg, row 17a', unoPins['D11'], hole(17, 'a'), '--w-pink', 'D11', 'bz');
+  W('bz', '- leg, row 19j', hole(19, 'j'), rail(19, 'bot-'), '--w-black', 'bottom rail - (GND)');
 
   function wirePath(w) {
     var a = w.a, b = w.b;
     if (w.via === 'side') return 'M ' + a[0] + ' ' + a[1] + ' H ' + (a[0] + 24) + ' V ' + b[1] + ' H ' + b[0];
     if (w.via === 'servo') return 'M ' + a[0] + ' ' + a[1] + ' V ' + (a[1] + 18 + (a[0] % 7)) + ' H ' + (UNO.x + UNO.w + 20 + (a[0] % 60)) + ' V ' + b[1] + ' H ' + b[0];
-    if (w.via === 'led') { var li = (a[1] - unoPins.D8[1]) / 24, lx = UNO.x + UNO.w + 60 - li * 14; return 'M ' + a[0] + ' ' + a[1] + ' H ' + lx + ' V ' + (b[1] + 34 - li * 10) + ' H ' + b[0] + ' V ' + b[1]; }
+    if (w.via === 'led') { var li = (a[1] - unoPins.D8[1]) / 24, lx = UNO.x + UNO.w + 60 - li * 14; return 'M ' + a[0] + ' ' + a[1] + ' H ' + lx + ' V ' + (b[1] + 26 - li * 8) + ' H ' + b[0] + ' V ' + b[1]; }
+    if (w.via === 'bz') { var bx = UNO.x + UNO.w + 8; return 'M ' + a[0] + ' ' + a[1] + ' H ' + bx + ' V ' + (b[1] - 12) + ' H ' + b[0] + ' V ' + b[1]; }
     if (Math.abs(a[1] - b[1]) < 4) return 'M ' + a[0] + ' ' + a[1] + ' H ' + b[0];
     if (a[0] > 930) { var lane = 900 + ((a[0] / 5) % 8) * 4; return 'M ' + a[0] + ' ' + a[1] + ' V ' + (a[1] + 10) + ' H ' + lane + ' V ' + b[1] + ' H ' + b[0]; }
     return 'M ' + a[0] + ' ' + a[1] + ' V ' + ((a[1] + b[1]) / 2) + ' H ' + b[0] + ' V ' + b[1];
@@ -1285,21 +1325,24 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h += '<rect x="' + (BB.x + 18) + '" y="' + (ch - 4) + '" width="' + (bw - 36) + '" height="8" fill="var(--bb-hole)" opacity="0.6"/>';
     h += '<text class="t-txt" x="' + (BB.x + bw - 6) + '" y="' + (BB.y + 14) + '" text-anchor="end">servo power</text>';
     h += '<text class="t-txt" x="' + (BB.x + bw - 6) + '" y="' + (rail(1, 'bot-')[1] + 20) + '" text-anchor="end">sensor power</text>';
-    // RGB LED (common anode) and its three resistors across the centre gap
-    var lc = hole(9, 'a');
-    [6, 8, 10, 12].forEach(function (c) {
-      var b = hole(c, 'b');
-      h += '<line x1="' + lc[0] + '" y1="' + (lc[1] - 6) + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
-    });
-    h += '<circle cx="' + lc[0] + '" cy="' + (lc[1] - 14) + '" r="13" fill="#f4f1ea" stroke="var(--ink)"/>';
-    h += '<text class="t-txt" x="' + lc[0] + '" y="' + (lc[1] - 10) + '" text-anchor="middle">RGB</text>';
-    var jf = hole(8, 'e'), jt = hole(8, 'f');
-    h += '<line x1="' + jf[0] + '" y1="' + jf[1] + '" x2="' + jt[0] + '" y2="' + jt[1] + '" stroke="var(--w-red)" stroke-width="2.6"/>';
-    [[6, '--led-r'], [10, '--led-g'], [12, '--led-b']].forEach(function (l) {
+    // Three LEDs, each with a 220 ohm resistor across the centre gap in its long leg column
+    [[5, '--led-r'], [9, '--led-g'], [13, '--led-b']].forEach(function (l) {
+      var an = hole(l[0], 'b'), ca = hole(l[0] + 1, 'b'), cx = (an[0] + ca[0]) / 2;
+      h += '<line x1="' + an[0] + '" y1="' + (an[1] - 16) + '" x2="' + an[0] + '" y2="' + an[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
+      h += '<line x1="' + ca[0] + '" y1="' + (ca[1] - 16) + '" x2="' + ca[0] + '" y2="' + ca[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
+      h += '<circle cx="' + cx + '" cy="' + (an[1] - 24) + '" r="10" fill="var(' + l[1] + ')" stroke="var(--ink)"/>';
       var e = hole(l[0], 'e'), f1 = hole(l[0], 'f');
       h += '<line x1="' + e[0] + '" y1="' + e[1] + '" x2="' + f1[0] + '" y2="' + f1[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
-      h += '<rect x="' + (e[0] - 5) + '" y="' + (e[1] + 6) + '" width="10" height="' + (f1[1] - e[1] - 12) + '" rx="3" fill="#d9b98c" stroke="var(' + l[1] + ')" stroke-width="2"/>';
+      h += '<rect x="' + (e[0] - 5) + '" y="' + (e[1] + 6) + '" width="10" height="' + (f1[1] - e[1] - 12) + '" rx="3" fill="#d9b98c" stroke="var(--ink)"/>';
+      var ke = hole(l[0] + 1, 'e'), kf = hole(l[0] + 1, 'f');
+      h += '<line x1="' + ke[0] + '" y1="' + ke[1] + '" x2="' + kf[0] + '" y2="' + kf[1] + '" stroke="var(--w-black)" stroke-width="2.6"/>';
     });
+    // Beeper (+ column 17, - column 19, linked across the gap)
+    var bp = hole(17, 'c'), bm = hole(19, 'c');
+    h += '<circle cx="' + ((bp[0] + bm[0]) / 2) + '" cy="' + bp[1] + '" r="17" fill="#222" stroke="var(--ink)"/>';
+    h += '<text x="' + ((bp[0] + bm[0]) / 2) + '" y="' + (bp[1] + 4) + '" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="#fff">BZ</text>';
+    var ge = hole(19, 'e'), gf = hole(19, 'f');
+    h += '<line x1="' + ge[0] + '" y1="' + ge[1] + '" x2="' + gf[0] + '" y2="' + gf[1] + '" stroke="var(--w-black)" stroke-width="2.6"/>';
     // Uno
     h += '<rect x="' + UNO.x + '" y="' + UNO.y + '" width="' + UNO.w + '" height="' + UNO.h + '" rx="8" fill="var(--board)"/>';
     h += '<text x="' + (UNO.x + 18) + '" y="' + (UNO.y + 30) + '" font-family="var(--display)" font-weight="700" font-size="26" fill="#ffffff">ARDUINO UNO</text>';
@@ -1347,7 +1390,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     $('bbView').innerHTML = h;
 
     // table
-    var rows = '', names = { base: 'Base servo', mainL: 'Main arm servo, left', mainR: 'Main arm servo, right', elbow: 'Second arm servo', psu: 'External 5 V supply', uno: 'Uno', gnd: 'Ground link', us: 'Ultrasonic HC-SR04', snd: 'Sound sensor', tcs: 'Colour sensor TCS34725', ledA: 'RGB LED', ledR: 'RGB LED', ledG: 'RGB LED', ledB: 'RGB LED' };
+    var rows = '', names = { base: 'Base servo', mainL: 'Main arm servo, left', mainR: 'Main arm servo, right', elbow: 'Second arm servo', psu: 'External 5 V supply', uno: 'Uno', gnd: 'Ground link', us: 'Ultrasonic HC-SR04', snd: 'Sound sensor', tcs: 'Colour sensor TCS34725', ledR: 'Red LED', ledG: 'Green LED', ledB: 'Blue LED', bz: 'Beeper' };
     wires.forEach(function (w) {
       rows += '<tr data-row="' + w.part + '" tabindex="0"><td>' + names[w.part] + '</td><td class="m">' + w.pin + '</td><td class="m">' + w.dest + '</td><td><span class="sw" style="background:var(' + w.col + ')"></span></td></tr>';
     });

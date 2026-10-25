@@ -25,15 +25,25 @@ Joint angles from the rest position, and where the sensor in use ends up (height
 | C | 22 left | 33 forward | 41 down | Clear dip: second arm points steeply down, colour sensor 15 mm off the paper at 84 mm |
 | D | 1 right | 13 forward | 11 down | Arm nearly straight ahead, sound sensor 4 cm from the tap point at 266 mm |
 | Indicator | 20 right | 19 to 35 forward | 13 down to 38 up | Ultrasonic points at 150 mm (quiet) up to 350 mm (loud) |
-| E | 80 right | 14 forward | 25 up | Arm swung right, pusher 30 mm above the button; each press leans the main arm 9 degrees forward |
+| E | 80 right | 19 forward | 34 up | Arm swung right, pusher 40 mm above the button; each press drops it 48 mm onto the button |
 
-Gestures use the two strongest joints so they show even if the second arm servo is weak. YES: the main arm leans forward and back. NO: the base turns left and right. BOX: the base and main arm trace a square. Each swing is 15 degrees each way, 900 ms per swing, and the Serial Monitor prints a `Gesture:` line.
+Gestures, one per run, each a different shape. YES (object at A): the sensor moves straight up and down about 40 mm, twice. NO (object at B): the base turns 15 degrees left and right, twice. BOX (nothing at A or B): the sensor traces a square, up, across, down and back. Each swing takes 900 ms with a short stop at each end, and the Serial Monitor prints a `Gesture:` line.
+
+Beeps: Task N beeps N times when it starts and N times when it ends, then a 2 s pause. Task 1 is A and B, Task 2 is C, Task 3 is D, Task 4 is E. At start up there are three single beeps, one with each LED.
+
+## Detection limits at A and B
+
+The arm stops with the ultrasonic 10 cm from each point, so an object there reads about 10 cm. The code counts an object when the reading is 3 to 15 cm (`US_A_MIN_CM`, `US_A_MAX_CM`, `US_B_MIN_CM`, `US_B_MAX_CM`), and only if at least 3 of the 5 pings echo back.
+
+- 3 cm minimum: the HC-SR04 cannot measure closer than about 2 to 3 cm, and readings below that are noise.
+- 15 cm maximum: 10 cm standoff plus 5 cm for positioning error. The sensor's cone is about 15 degrees, so at 15 cm it already covers a circle about 8 cm across. Raising the limit to 20 cm or more lets it see the stand, the plate or the table behind the point and report an object that is not there.
+- At B the sensor looks about 40 degrees downward. If B is the top of a plate, the plate itself can echo at about 10 to 12 cm with nothing on it. Check this on the day.
+
+How to set them on the day: run `test_combined` with nothing at A and B and note the two distances it prints, then again with the test objects in place. Set each point's MAX halfway between its object reading and its empty reading. The empty reading must end up at least 3 cm above MAX. If B's empty reading is close to 10 cm, lower `US_B_MAX_CM` until it is clear, or raise B's main arm trim so the sensor looks over the plate.
 
 The arm stays still for 2 s at every point before it does anything there. Between A and B it lifts back up first, so the two visits are clearly separate.
 
-Each Morse press at E is the main arm leaning about 9 degrees forward from 30 mm above the button to 8 mm into it; the base and second arm hold still.
-
-At start up the RGB LED shows red, green and blue alone for 1 s each. Each must be a pure colour. A mix (white, cyan, magenta or yellow) means `LED_COMMON_ANODE` is set wrong for the LED.
+Each Morse press at E moves the pusher 48 mm down, from 40 mm above the button to 8 mm into it, and back up. The main arm and the second arm move together so the pusher goes down along its own length. If the second arm servo cannot manage it, set `PRESS_MAIN_ARM_ONLY` to true and only the main arm leans forward for each press.
 
 ## Testing at home without the stands
 

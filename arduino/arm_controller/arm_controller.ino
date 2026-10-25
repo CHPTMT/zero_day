@@ -4,13 +4,17 @@
  *
  * Sequence (state machine, fully autonomous after reset):
  *   ZERO    all joints at relative 0 for 5 s (also the window to type the word)
- *   TASK 1  Points A and B: ultrasonic presence, YES / NO / BOX gesture
- *           (YES nods the main arm, NO shakes the base, BOX uses both)
- *   TASK 2  Point C: colour sensor, the RGB LED shows the colour it sees
+ *   TASK 1  Points A and B: ultrasonic presence, then one gesture:
+ *           YES  sensor moves straight up and down (object at A)
+ *           NO   base turns left and right (object at B)
+ *           BOX  sensor traces a square, both together (nothing at A or B)
+ *   TASK 2  Point C: colour sensor, the red, green or blue LED lights
  *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
- *   TASK 4  Point E: press the button in Morse for the 3 letter word
- *           (each press is the main arm leaning forward; the second arm holds still)
+ *   TASK 4  Point E: press the button in Morse for the 3 letter word,
+ *           the pusher moving straight down onto the button each press
  *   FINISH  back to zero, print a summary
+ * Beeper on D11: task N beeps N times when it starts and N times when it
+ * ends, then a 2 s pause before the next task.
  * Everything the arm does and senses is printed to the Serial Monitor
  * (115200 baud), so the run can be followed without the LCD.
  *
@@ -72,12 +76,13 @@ const uint8_t PIN_US_ECHO    = 6;
 const uint8_t PIN_US_TRIG    = 7;
 const uint8_t PIN_SOUND      = A1;   // sound sensor AO
 // Colour sensor on I2C: SDA = A4, SCL = A5
-// RGB LED, common anode: long leg to 5 V, the red, green and blue legs each
-// through 220 ohm to these pins. A pin set LOW lights that colour.
+// Three separate LEDs: pin -> 220 ohm -> long leg, short leg -> GND.
+// A pin set HIGH lights that LED.
 const uint8_t PIN_LED_RED    = 8;
 const uint8_t PIN_LED_GREEN  = 9;
 const uint8_t PIN_LED_BLUE   = 10;
-const bool LED_COMMON_ANODE  = true;   // false for a common cathode LED (long leg to GND)
+const bool LEDS_ACTIVE_HIGH  = true;   // false only if the LEDs' short legs go to a pin and long legs to 5 V
+const uint8_t PIN_BUZZER     = 11;   // beeper: + to D11, - to GND
 const uint8_t PIN_STATUS     = 13;   // onboard LED
 
 // ======================================================================
@@ -160,7 +165,7 @@ Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US}; 
 Station ST_B       = {"Point B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
 Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
-Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  30, {0, 0, 0}, &TOOL_PUSHER};  // 30 mm off the button, so each press is a clear move
+Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // 40 mm above the button, so each press is easy to see
 Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
@@ -184,19 +189,47 @@ const bool     USE_TRAVEL   = true;          // lift before turning the base
 const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
 const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
 
-// Gestures use the two strongest joints, the main arm (two servos) and the
-// base, so they show clearly even if the second arm servo is weak. Slow
-// swings so they do not shake the arm.
-const float    GESTURE_DEG     = 15;    // swing each way (10 on the second arm was not visible)
+// Gestures, each a different shape so they cannot be confused:
+//   YES  the sensor goes straight up and down (vertical line), 2 nods
+//   NO   the base turns left and right (horizontal line), 2 shakes
+//   BOX  the sensor traces a square, up/down and left/right together
+const float    GESTURE_UP_MM   = 70;    // YES and BOX: aim this far above and below the point (sensor moves about 40 mm)
+const float    GESTURE_DEG     = 15;    // NO and BOX: base turns this far each way
+const float    BOX_LIFT_MM     = 40;    // BOX is drawn this far above B, so its bottom stays clear of the main arm limit
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
+const uint16_t GESTURE_PAUSE_MS = 400;  // short stop at each end of a swing, so the shape reads clearly
+
+// Points E press: false = pusher moves straight down (main arm and second arm
+// together, the correct press). true = main arm only, a fallback if the
+// second arm servo is too weak to move.
+const bool     PRESS_MAIN_ARM_ONLY = false;
+
+// Beeper
+const bool     BUZZER_PASSIVE  = true;  // passive buzzer (needs a tone). Set false for an active buzzer
+const uint16_t BEEP_HZ         = 2500;
+const uint16_t BEEP_MS         = 120;   // one quick beep
+const uint16_t BEEP_GAP_MS     = 180;   // silence between beeps
+const uint16_t TASK_GAP_MS     = 2000;  // pause after a task's end beeps
 
 // ======================================================================
 // SENSOR THRESHOLDS
 // ======================================================================
-const float    US_DETECT_MIN_CM = 2.0;
-const float    US_DETECT_MAX_CM = 20.0;      // standoff 10 cm, plus 10 cm margin
+// Detection window for each point, in cm from the ultrasonic face. The arm
+// stops 10 cm from each point, so an object there reads about 10 cm.
+//   MIN 3: the HC-SR04 cannot measure closer than about 2 to 3 cm; nearer
+//          readings are noise.
+//   MAX 15: 10 cm standoff plus 5 cm for positioning error. Going further
+//          (20 cm or more) lets the 15 degree cone reach the stand or plate
+//          behind the point and report an object that is not there.
+// Check on the day: run test_combined with nothing at A and B and note the
+// distances. Each empty reading must be at least 3 cm above that point's MAX.
+const float    US_A_MIN_CM      = 3.0;
+const float    US_A_MAX_CM      = 15.0;
+const float    US_B_MIN_CM      = 3.0;
+const float    US_B_MAX_CM      = 15.0;
 const uint8_t  US_SAMPLES       = 5;
+const uint8_t  US_MIN_ECHOES    = 3;         // at least this many of the 5 pings must come back
 const unsigned long US_TIMEOUT_US = 25000;
 
 const float REF_RED[3]   = {0.58, 0.23, 0.19};   // calibrate with test_sensors
@@ -466,44 +499,80 @@ void goToStation(const Station &s) {
 // ======================================================================
 // GESTURES
 // ======================================================================
-// Middle of a swing on joint j, moved in from a limit so both ends of the
-// swing are reachable (at B the base is 80 left, so NO swings about 75).
-float swingCentre(uint8_t j) {
-  return constrain(cur.a[j], REL_MIN[j] + GESTURE_DEG, REL_MAX[j] - GESTURE_DEG);
+// Pose that puts the station's sensor dz mm above (or below, if negative) its
+// usual spot, still aimed the same way, with the base at baseRel.
+bool shiftedPose(const Station &s, float dz, float baseRel, Pose &out) {
+  Station t = s;
+  t.z += dz;
+  if (!toolIK(t, out)) return false;
+  for (uint8_t j = 0; j < NJ; j++) out.a[j] += s.trim[j];
+  out.a[J_BASE] = baseRel;
+  for (uint8_t j = 0; j < NJ; j++) out.a[j] = constrain(out.a[j], REL_MIN[j], REL_MAX[j]);
+  return true;
 }
 
-// Swing one joint either side of its centre, then return to where it was.
-void swingJoint(uint8_t j) {
-  float home = cur.a[j], c = swingCentre(j);
+// Middle of the base swing, moved in from a limit so both ends are reachable
+// (at A and B the base is 80 left, so NO swings about 72).
+float baseCentre() {
+  return constrain(cur.a[J_BASE], REL_MIN[J_BASE] + GESTURE_DEG + 3, REL_MAX[J_BASE] - GESTURE_DEG - 3);   // 3 deg clear of the servo end stop
+}
+
+// Move to a gesture pose and stop briefly, so each end of the shape is clear.
+void gestureStep(const Pose &p, uint16_t ms) {
+  moveTo(p, ms);
+  delay(GESTURE_PAUSE_MS);
+}
+
+void gestureYes(const Station &s) {   // vertical line: sensor up and down
+  Serial.println(F("Gesture: YES, nodding (sensor moves straight up and down twice)."));
+  Pose home = cur, up, down;
+  if (!shiftedPose(s, GESTURE_UP_MM, cur.a[J_BASE], up) || !shiftedPose(s, -GESTURE_UP_MM, cur.a[J_BASE], down)) return;
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
-    moveJoint(j, c + GESTURE_DEG, GESTURE_STEP_MS);
-    moveJoint(j, c - GESTURE_DEG, GESTURE_STEP_MS);
+    gestureStep(up, GESTURE_STEP_MS);
+    gestureStep(down, GESTURE_STEP_MS);
   }
-  moveJoint(j, home, GESTURE_STEP_MS);
+  gestureStep(home, GESTURE_STEP_MS);
 }
 
-void gestureYes() {   // vertical: main arm leans forward and back
-  Serial.println(F("Gesture: nodding YES (main arm leans forward and back)."));
-  swingJoint(J_MAIN);
-}
-
-void gestureNo() {    // horizontal: base left and right
-  Serial.println(F("Gesture: shaking NO (base turns left and right)."));
-  swingJoint(J_BASE);
-}
-
-void gestureBox() {   // square traced with the base and the main arm
-  Serial.println(F("Gesture: drawing a BOX with the base and main arm, because there was no object at A or B."));
-  Pose home = cur;
-  float cb = swingCentre(J_BASE), cm = swingCentre(J_MAIN);
-  const int8_t k[5][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
-  for (uint8_t i = 0; i < 5; i++) {
-    Pose p = cur;
-    p.a[J_BASE] = cb + k[i][0] * GESTURE_DEG;
-    p.a[J_MAIN] = cm + k[i][1] * GESTURE_DEG;
-    moveTo(p, GESTURE_STEP_MS * 2);
+void gestureNo() {    // horizontal line: base left and right
+  Serial.println(F("Gesture: NO, shaking (base turns left and right twice)."));
+  Pose home = cur, left = cur, right = cur;
+  float c = baseCentre();
+  left.a[J_BASE] = c + GESTURE_DEG;
+  right.a[J_BASE] = c - GESTURE_DEG;
+  for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
+    gestureStep(left, GESTURE_STEP_MS);
+    gestureStep(right, GESTURE_STEP_MS);
   }
-  moveTo(home, GESTURE_STEP_MS * 2);
+  gestureStep(home, GESTURE_STEP_MS);
+}
+
+void gestureBox(const Station &s) {   // square: up/down and left/right
+  Serial.println(F("Gesture: BOX, nothing at A or B (sensor traces a square: up, across, down, back)."));
+  Pose home = cur, corner[4];
+  float c = baseCentre();
+  const int8_t k[4][2] = {{1, 1}, {-1, 1}, {-1, -1}, {1, -1}};   // {left/right, up/down}
+  for (uint8_t i = 0; i < 4; i++)
+    if (!shiftedPose(s, BOX_LIFT_MM + k[i][1] * GESTURE_UP_MM, c + k[i][0] * GESTURE_DEG, corner[i])) return;
+  for (uint8_t i = 0; i < 4; i++) gestureStep(corner[i], GESTURE_STEP_MS * 2);
+  gestureStep(corner[0], GESTURE_STEP_MS * 2);   // close the square
+  gestureStep(home, GESTURE_STEP_MS * 2);
+}
+
+// ======================================================================
+// BEEPER
+// ======================================================================
+void beepOn()  { if (BUZZER_PASSIVE) tone(PIN_BUZZER, BEEP_HZ); else digitalWrite(PIN_BUZZER, HIGH); }
+void beepOff() { if (BUZZER_PASSIVE) noTone(PIN_BUZZER); else digitalWrite(PIN_BUZZER, LOW); }
+
+// n quick beeps
+void beeps(uint8_t n) {
+  for (uint8_t i = 0; i < n; i++) {
+    beepOn();
+    delay(BEEP_MS);
+    beepOff();
+    delay(BEEP_GAP_MS);
+  }
 }
 
 // ======================================================================
@@ -519,7 +588,8 @@ float pingCm() {
   return us == 0 ? -1 : us * 0.0343 / 2.0;
 }
 
-// Median of several pings, -1 if none came back.
+// Median of several pings, -1 if fewer than US_MIN_ECHOES came back (one
+// stray echo is not enough to call an object).
 float readDistanceCm() {
   float v[US_SAMPLES];
   uint8_t n = 0;
@@ -528,7 +598,7 @@ float readDistanceCm() {
     if (d > 0) v[n++] = d;
     delay(30);
   }
-  if (n == 0) return -1;
+  if (n < US_MIN_ECHOES) return -1;
   for (uint8_t i = 1; i < n; i++) {
     float x = v[i];
     int8_t k = i - 1;
@@ -538,17 +608,16 @@ float readDistanceCm() {
   return v[n / 2];
 }
 
-bool objectPresent(float d) { return d >= US_DETECT_MIN_CM && d <= US_DETECT_MAX_CM; }
+bool inWindow(float d, float lo, float hi) { return d >= lo && d <= hi; }
 
 // ======================================================================
 // COLOUR
 // ======================================================================
-// Lights one colour of the RGB LED, or none for any other letter.
-// With a common anode LED a LOW pin is on, so each level is flipped.
+// Lights only the LED for that colour (R, G or B); any other letter turns all off.
 void setColourLed(char c) {
-  digitalWrite(PIN_LED_RED,   (c == 'R') != LED_COMMON_ANODE);
-  digitalWrite(PIN_LED_GREEN, (c == 'G') != LED_COMMON_ANODE);
-  digitalWrite(PIN_LED_BLUE,  (c == 'B') != LED_COMMON_ANODE);
+  digitalWrite(PIN_LED_RED,   (c == 'R') == LEDS_ACTIVE_HIGH);
+  digitalWrite(PIN_LED_GREEN, (c == 'G') == LEDS_ACTIVE_HIGH);
+  digitalWrite(PIN_LED_BLUE,  (c == 'B') == LEDS_ACTIVE_HIGH);
 }
 
 float dist2(const float a[3], const float b[3]) {
@@ -585,12 +654,12 @@ char classifyColour(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   return dg <= db ? 'G' : 'B';
 }
 
-// The LED follows what the sensor sees, a fresh reading every 50 ms. It only
-// changes after COLOUR_STEADY matching readings, so it shows one solid colour
-// instead of flickering between two (which looks like a mix).
+// The LEDs follow what the sensor sees, a fresh reading every 50 ms. The lit
+// LED only changes after COLOUR_STEADY matching readings, so one LED stays on
+// instead of two flickering.
 void showColourLive(uint16_t ms) {
   if (!tcsOk) return;
-  Serial.println(F("The RGB LED now follows what the colour sensor sees for 2 seconds."));
+  Serial.println(F("The LEDs now follow what the colour sensor sees for 2 seconds."));
   char shown = '-', last = '-';
   uint8_t same = 0;
   unsigned long end = millis() + ms;
@@ -604,9 +673,8 @@ void showColourLive(uint16_t ms) {
   }
 }
 
-// Start up check: red, green and blue alone, one second each. Each must be a
-// pure colour. A mix (white, cyan, magenta, yellow) means LED_COMMON_ANODE is
-// set wrong for the LED; the wrong colour means two wires are swapped.
+// Start up check: red, green and blue LEDs one at a time, one second each,
+// with a beep, so a wrong wire or a dead LED or beeper shows straight away.
 void ledCheck() {
   const char order[3] = {'R', 'G', 'B'};
   const __FlashStringHelper *pin[3] = {F("D8"), F("D9"), F("D10")};
@@ -614,15 +682,16 @@ void ledCheck() {
     Serial.print(F("LED check: only ")); Serial.print(colourName(order[i]));
     Serial.print(F(" should be lit now (")); Serial.print(pin[i]); Serial.println(F(")."));
     setColourLed(order[i]);
+    beeps(1);
     delay(LED_CHECK_MS);
   }
   setColourLed('-');
-  Serial.println(F("LED check done. If you saw a mixed colour, flip LED_COMMON_ANODE."));
+  Serial.println(F("LED check done. Each LED should have lit alone, in the order red, green, blue, with a beep each."));
 }
 
 // Always returns R, G or B, so the LED always shows a colour.
 char readColour() {
-  if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so the LED shows red by default.")); return 'R'; }
+  if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so the red LED is used by default.")); return 'R'; }
   uint32_t r = 0, g = 0, b = 0, c = 0;
   for (uint8_t i = 0; i < COLOUR_SAMPLES; i++) {
     uint16_t rr, gg, bb, cc;
@@ -724,7 +793,7 @@ void sendMorseWord(const char *word) {
     if (!code) continue;
     Serial.print(F("   Letter ")); Serial.print(word[i]); Serial.print(F(":"));
     for (uint8_t k = 0; code[k]; k++) {
-      Serial.print(code[k] == '.' ? F(" short press") : F(" long press"));
+      Serial.print(code[k] == '.' ? F(" short press (dot)") : F(" long press (dash)"));
       pressFor(code[k] == '.' ? MORSE_UNIT_MS : 3 * MORSE_UNIT_MS);
       if (code[k + 1]) pauseFor(MORSE_UNIT_MS);
     }
@@ -781,29 +850,33 @@ void holdZeroAndReadWord() {
 // TASKS
 // ======================================================================
 // e.g. "Point A: object found, 10.2 cm away." or "Point B: nothing there (no echo)."
-void printDistance(const __FlashStringHelper *where, float d, bool found) {
+void printDistance(const __FlashStringHelper *where, float d, bool found, float lo, float hi) {
   Serial.print(where);
   if (found) { Serial.print(F(": object found, ")); Serial.print(d, 1); Serial.println(F(" cm away.")); }
   else if (d < 0) Serial.println(F(": nothing there (no echo came back)."));
-  else { Serial.print(F(": nothing there (nearest echo ")); Serial.print(d, 1); Serial.println(F(" cm, beyond the limit).")); }
+  else {
+    Serial.print(F(": nothing there (nearest echo ")); Serial.print(d, 1);
+    Serial.print(F(" cm, outside the ")); Serial.print(lo, 0); Serial.print(F(" to ")); Serial.print(hi, 0);
+    Serial.println(F(" cm window)."));
+  }
 }
 
 void task1() {
   Serial.println(F("\nTASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor."));
   goToStation(ST_A);
   distA = readDistanceCm();
-  resultA = objectPresent(distA);
-  printDistance(F("Point A"), distA, resultA);
-  if (resultA) gestureYes();
+  resultA = inWindow(distA, US_A_MIN_CM, US_A_MAX_CM);
+  printDistance(F("Point A"), distA, resultA, US_A_MIN_CM, US_A_MAX_CM);
+  if (resultA) gestureYes(ST_A);
 
   liftClear();   // A and B are above each other, so make B a visibly separate visit
   goToStation(ST_B);
   distB = readDistanceCm();
-  resultB = objectPresent(distB);
-  printDistance(F("Point B"), distB, resultB);
+  resultB = inWindow(distB, US_B_MIN_CM, US_B_MAX_CM);
+  printDistance(F("Point B"), distB, resultB, US_B_MIN_CM, US_B_MAX_CM);
   if (resultB) gestureNo();
 
-  if (!resultA && !resultB) gestureBox();
+  if (!resultA && !resultB) gestureBox(ST_B);
 }
 
 void task2() {
@@ -812,7 +885,7 @@ void task2() {
   showColourLive(COLOUR_LIVE_MS);
   resultColour = readColour();
   Serial.print(F("Point C: the paper is ")); Serial.print(colourName(resultColour));
-  Serial.print(F(". The RGB LED now shows ")); Serial.print(colourName(resultColour)); Serial.println('.');
+  Serial.print(F(". The ")); Serial.print(colourName(resultColour)); Serial.println(F(" LED is now on."));
   setColourLed(resultColour);   // stays lit to the end of the run
 }
 
@@ -853,21 +926,35 @@ void task4() {
     Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
   }
-  // Same pose, main arm leaned back until the pusher clears the button. Each
-  // press is then only the main arm leaning forward: its two servos are the
-  // strongest joint, and the second arm and base hold still.
-  hoverPose = pressPose;
-  setTipHeight(hoverPose, ST_E_HOVER.z + ST_E_HOVER.standoff);
+  if (PRESS_MAIN_ARM_ONLY) {
+    // Fallback: same pose with the main arm leaned back off the button.
+    hoverPose = pressPose;
+    setTipHeight(hoverPose, ST_E_HOVER.z + ST_E_HOVER.standoff);
+  } else if (!stationPose(ST_E_HOVER, hoverPose)) {
+    return;
+  }
   goToPose(hoverPose, "Point E (above the button)");
-  Serial.print(F("Each press leans the main arm ")); Serial.print(pressPose.a[J_MAIN] - hoverPose.a[J_MAIN], 1);
-  Serial.println(F(" degrees forward onto the button and back."));
+  Serial.print(F("Each press moves the pusher ")); Serial.print(ST_E_HOVER.standoff - ST_E_PRESS.standoff, 0);
+  Serial.print(F(" mm down onto the button and back up (main arm "));
+  Serial.print(pressPose.a[J_MAIN] - hoverPose.a[J_MAIN], 1); Serial.print(F(" degrees, second arm "));
+  Serial.print(pressPose.a[J_ELBOW] - hoverPose.a[J_ELBOW], 1); Serial.println(F(" degrees)."));
   sendMorseWord(targetWord);
+}
+
+// Task n: n beeps, the task, n beeps, then a 2 s pause.
+void runTask(uint8_t n, void (*task)()) {
+  Serial.print(F("Beep x")); Serial.print(n); Serial.print(F(": start of Task ")); Serial.print(n); Serial.println('.');
+  beeps(n);
+  task();
+  Serial.print(F("Beep x")); Serial.print(n); Serial.print(F(": end of Task ")); Serial.print(n); Serial.println('.');
+  beeps(n);
+  delay(TASK_GAP_MS);
 }
 
 void printSummary() {
   Serial.println(F("\n========== RUN SUMMARY =========="));
-  printDistance(F("Point A"), distA, resultA);
-  printDistance(F("Point B"), distB, resultB);
+  printDistance(F("Point A"), distA, resultA, US_A_MIN_CM, US_A_MAX_CM);
+  printDistance(F("Point B"), distB, resultB, US_B_MIN_CM, US_B_MAX_CM);
   Serial.print(F("Gesture made: "));
   if (resultA && resultB) Serial.println(F("YES, then NO."));
   else if (resultA) Serial.println(F("YES."));
@@ -893,6 +980,7 @@ void setup() {
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_BLUE, OUTPUT);
   pinMode(PIN_STATUS, OUTPUT);
+  pinMode(PIN_BUZZER, OUTPUT);
   setColourLed('-');
 
   // Write zero before attaching so nothing jumps on power up.
@@ -922,19 +1010,19 @@ void loop() {
       state = ST_TASK1;
       break;
     case ST_TASK1:
-      if (RUN_TASK_1) task1();
+      if (RUN_TASK_1) runTask(1, task1);
       state = ST_TASK2;
       break;
     case ST_TASK2:
-      if (RUN_TASK_2) task2();
+      if (RUN_TASK_2) runTask(2, task2);
       state = ST_TASK3;
       break;
     case ST_TASK3:
-      if (RUN_TASK_3) task3();
+      if (RUN_TASK_3) runTask(3, task3);
       state = ST_TASK4;
       break;
     case ST_TASK4:
-      if (RUN_TASK_4) task4();
+      if (RUN_TASK_4) runTask(4, task4);
       state = ST_FINISH;
       break;
     case ST_FINISH:

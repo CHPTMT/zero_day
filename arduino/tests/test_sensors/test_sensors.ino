@@ -5,7 +5,8 @@
  *   distance (cm) and present / empty | colour raw, normalised, class,
  *   colour temperature (K) and primary colour (strongest channel) |
  *   sound peak to peak amplitude and indicator level
- * The RGB LED shows the colour the sensor sees, live.
+ * The red, green or blue LED lights for the colour the sensor sees, live.
+ * At start up each LED lights alone and the beeper beeps once, twice, three times.
  *
  * Calibration from the Serial Monitor (115200, Newline):
  *   r / g / b   hold that colour paper under the sensor, then type the letter.
@@ -14,7 +15,8 @@
  *               Do a soft and a hard tap, set SOUND_AMP_MIN and SOUND_AMP_MAX.
  *
  * Pins: ultrasonic echo D6, trig D7, sound AO A1, colour SDA A4 / SCL A5,
- *       RGB LED (common anode, long leg to 5 V) red D8, green D9, blue D10.
+ *       LEDs red D8, green D9, blue D10 (each through 220 ohm, short leg to GND),
+ *       beeper D11.
  * Library: Adafruit TCS34725
  */
 
@@ -23,10 +25,12 @@
 
 const uint8_t PIN_US_ECHO = 6, PIN_US_TRIG = 7, PIN_SOUND = A1;
 const uint8_t PIN_LED_RED = 8, PIN_LED_GREEN = 9, PIN_LED_BLUE = 10;
-const bool LED_COMMON_ANODE = true;   // a LOW pin lights that colour; false for common cathode
+const bool LEDS_ACTIVE_HIGH = true;   // a HIGH pin lights that LED
+const uint8_t PIN_BUZZER = 11;
+const bool BUZZER_PASSIVE = true;     // same as arm_controller.ino; false for an active buzzer
 
 // Same values as arm_controller.ino
-const float US_DETECT_MIN_CM = 2.0, US_DETECT_MAX_CM = 20.0;
+const float US_DETECT_MIN_CM = 3.0, US_DETECT_MAX_CM = 15.0;   // the A and B window in arm_controller.ino
 float REF_RED[3]   = {0.58, 0.23, 0.19};
 float REF_GREEN[3] = {0.28, 0.44, 0.28};
 float REF_BLUE[3]  = {0.20, 0.32, 0.48};
@@ -84,9 +88,18 @@ char classify(const float n[3]) {
 }
 
 void showLed(char c) {
-  digitalWrite(PIN_LED_RED, (c == 'R') != LED_COMMON_ANODE);
-  digitalWrite(PIN_LED_GREEN, (c == 'G') != LED_COMMON_ANODE);
-  digitalWrite(PIN_LED_BLUE, (c == 'B') != LED_COMMON_ANODE);
+  digitalWrite(PIN_LED_RED, (c == 'R') == LEDS_ACTIVE_HIGH);
+  digitalWrite(PIN_LED_GREEN, (c == 'G') == LEDS_ACTIVE_HIGH);
+  digitalWrite(PIN_LED_BLUE, (c == 'B') == LEDS_ACTIVE_HIGH);
+}
+
+void beeps(uint8_t n) {
+  for (uint8_t i = 0; i < n; i++) {
+    if (BUZZER_PASSIVE) tone(PIN_BUZZER, 2500); else digitalWrite(PIN_BUZZER, HIGH);
+    delay(120);
+    if (BUZZER_PASSIVE) noTone(PIN_BUZZER); else digitalWrite(PIN_BUZZER, LOW);
+    delay(180);
+  }
 }
 
 // Peak to peak level over a short window (live meter).
@@ -155,13 +168,14 @@ void setup() {
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_BLUE, OUTPUT);
-  // LED check: each colour alone for a second. A mix means LED_COMMON_ANODE is wrong.
-  Serial.println(F("\nLED check: RED alone (D8), then GREEN alone (D9), then BLUE alone (D10)."));
-  showLed('R'); delay(1000);
-  showLed('G'); delay(1000);
-  showLed('B'); delay(1000);
+  pinMode(PIN_BUZZER, OUTPUT);
+  // LED and beeper check: each LED alone for a second, with 1, 2 then 3 beeps.
+  Serial.println(F("\nLED and beeper check: RED LED with 1 beep, GREEN with 2, BLUE with 3."));
+  showLed('R'); beeps(1); delay(1000);
+  showLed('G'); beeps(2); delay(1000);
+  showLed('B'); beeps(3); delay(1000);
   showLed('-');
-  Serial.println(F("If any of those was a mixed colour, flip LED_COMMON_ANODE at the top of this file."));
+  Serial.println(F("If an LED did not light, or another one lit with it, check its wire and resistor."));
   tcsOk = tcs.begin();
   Serial.println(F("\nSENSOR TEST: reading all sensors twice a second. The arm does not move."));
   Serial.println(tcsOk ? F("Colour sensor: connected.") : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires and power."));
