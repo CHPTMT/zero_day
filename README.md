@@ -27,7 +27,7 @@ Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm ab
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
 | Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
 
-The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A and 70 mm from B, colour sensor 15 mm from the paper at C, sound sensor 40 mm from D, at E the second arm tilts 18 degrees for each press, the pusher dropping 52 mm to 8 mm into the button.
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 120 mm from A and B (so the colour sensor, 83 mm further out, stays 37 mm clear), colour sensor 15 mm from the paper at C, sound sensor 80 mm from D, at E the second arm tilts 18 degrees for each press, the pusher dropping 52 mm to 8 mm into the button.
 
 ## Stations (theta deg, R mm, Z mm)
 

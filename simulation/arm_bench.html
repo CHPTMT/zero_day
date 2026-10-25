@@ -375,17 +375,17 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   var MIN = [-90, -15, -90], MAX = [90, 50, 45];
   var ZERO = [0, 0, 0];
   var ST = {
-    A:      { name: 'A',       theta: 10,  r: 350, z: 320, s: 100, tool: TOOLS.US },
-    B:      { name: 'B',       theta: 10,  r: 350, z: 150, s: 70,  tool: TOOLS.US },
+    A:      { name: 'A',       theta: 10,  r: 350, z: 320, s: 120, tool: TOOLS.US },
+    B:      { name: 'B',       theta: 10,  r: 350, z: 150, s: 120, tool: TOOLS.US },
     C:      { name: 'C',       theta: 55,  r: 200, z: 70,  s: 15,  tool: TOOLS.RGB },
-    D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 40,  tool: TOOLS.SND },
-    INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60,  tool: TOOLS.US },
-    INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 60,  tool: TOOLS.US },
+    D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 80,  tool: TOOLS.SND },
+    INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 120, tool: TOOLS.US },
+    INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 120, tool: TOOLS.US },
     EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 40,  tool: TOOLS.PUSH },
     EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
   };
-  var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 60, PRESS_LIFT = 18, PRESS_SPEED = 60, CLOSE_AT = 0.77, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
+  var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 120 };
+  var US_MIN = 3, US_MAX = 17, GEST_UP = 70, BOX_LIFT = 60, PRESS_LIFT = 18, PRESS_SPEED = 60, CLOSE_AT = 0.77, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -946,7 +946,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await runTask(1, async function () {
       log(''); log('TASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor.', 'h');
       await goToStation(ST.A, id);
-      dA = distAt(obj === 'A' || obj === 'AB'); rA = dA >= US_MIN && dA <= US_MAX;
+      dA = distAt(obj === 'A' || obj === 'AB', ST.A.s / 10); rA = dA >= US_MIN && dA <= US_MAX;
       log(distLine('Point A', dA, rA));
       setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
       if (rA) await gestureYes(ST.A, id);
@@ -1105,7 +1105,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await moveTo(ZERO, 1200, id);
     posLine('zero'); log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
     await sleep(5000, id);
-    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor (counts as nothing there).' : ': the ultrasonic sensor measures ' + f(d) + ' cm, which the demo counts as ' + (d >= US_MIN && d <= US_MAX ? 'an object.' : 'nothing there.'))); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
+    function dist(at) { var d = (obj === at || obj === 'AB') ? 12 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor (counts as nothing there).' : ': the ultrasonic sensor measures ' + f(d) + ' cm, which the demo counts as ' + (d >= US_MIN && d <= US_MAX ? 'an object.' : 'nothing there.'))); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
     if (await goToStation(ST.A, id)) { dist('A'); await gestureYes(ST.A, id); }
     await liftClear(id); log('Going down to Point B, the lower point.');
     if (await goToStation(ST.B, id)) { dist('B'); await gestureNo(id); await gestureBox(ST.B, id); }
@@ -1122,7 +1122,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       log('Loudest sound heard: ' + (tap > 0 ? tap : 9) + ' out of 1023.');
       setLive('snd', tap > 0 ? tap : 9);
     }
-    for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
+    for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 120 }, ST.INDHI]) {
       await goToStation(k, id); await sleep(1000, id);
     }
     var prs = stationPose(ST.EP), hov = eHover2(prs), rp;

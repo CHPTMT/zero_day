@@ -61,13 +61,13 @@ const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 30 mm bar under
 
 // ---------------- stations ----------------
 struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; const Tool *tool; };
-Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};
-Station ST_B       = {"Point B",       10, 350, 150,  70, {0, 0, 0}, &TOOL_US};
+Station ST_A       = {"Point A",       10, 350, 320, 120, {0, 0, 0}, &TOOL_US};
+Station ST_B       = {"Point B",       10, 350, 150, 120, {0, 0, 0}, &TOOL_US};
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};
-Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};
-Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
-Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
-Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
+Station ST_D       = {"Point D",      100, 275, 250,  80, {0, 0, 0}, &TOOL_SOUND};
+Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150, 120, {0, 0, 0}, &TOOL_US};
+Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250, 120, {0, 0, 0}, &TOOL_US};
+Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350, 120, {0, 0, 0}, &TOOL_US};
 Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // 40 mm above the button, so each press is easy to see
 Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
 
@@ -83,7 +83,7 @@ const float BOX_LIFT_MM = 60;
 const uint8_t GESTURE_REPEATS = 2;
 const uint16_t GESTURE_STEP_MS = 900;
 const uint16_t GESTURE_PAUSE_MS = 400;
-const float US_MIN_CM = 3, US_MAX_CM = 15;   // detection window at A and B in arm_controller.ino
+const float US_MIN_CM = 3, US_MAX_CM = 17;   // detection window at A and B in arm_controller.ino
 
 Servo sBase, sLeft, sRight, sElbow;
 struct Pose { float a[NJ]; };

@@ -161,10 +161,12 @@ struct Station {
   const Tool *tool;
 };
 
-Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};      // 10 cm from the plate
-Station ST_B       = {"Point B",       10, 350, 150,  70, {0, 0, 0}, &TOOL_US};      // 7 cm, so the arm leans clearly lower than at A
+// The colour sensor sticks out 83 mm past the ultrasonic and 41 mm past the
+// sound sensor, so every standoff leaves it at least 37 mm short of the point.
+Station ST_A       = {"Point A",       10, 350, 320, 120, {0, 0, 0}, &TOOL_US};      // 12 cm; colour sensor tip 37 mm clear
+Station ST_B       = {"Point B",       10, 350, 150, 120, {0, 0, 0}, &TOOL_US};      // 12 cm; colour sensor tip 37 mm clear
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
-Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
+Station ST_D       = {"Point D",      100, 275, 250,  80, {0, 0, 0}, &TOOL_SOUND};   // 8 cm; colour sensor tip 39 mm clear
 Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // used only by the main arm fallback
 Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
 
@@ -174,7 +176,7 @@ const float IND_THETA    = 110;
 const float IND_R        = 275;
 const float IND_Z_LOW    = 150;
 const float IND_Z_HIGH   = 350;
-const float IND_STANDOFF = 60;
+const float IND_STANDOFF = 120;   // ultrasonic 12 cm from the scale, colour sensor tip 37 mm clear
 
 // ======================================================================
 // MOTION
@@ -221,18 +223,19 @@ const uint16_t TASK_GAP_MS     = 2000;  // pause after a task's end beeps
 // SENSOR THRESHOLDS
 // ======================================================================
 // Detection window for each point, in cm from the ultrasonic face. The arm
-// stops 10 cm from A and 7 cm from B, so an object reads about 10 or 7 cm.
+// stops 12 cm from A and B (so the colour sensor, 8.3 cm further out, stays
+// clear), so an object there reads about 12 cm.
 //   MIN 3: the HC-SR04 cannot measure closer than about 2 to 3 cm; nearer
 //          readings are noise.
-//   MAX 15: the standoff plus a margin for positioning error. Going further
-//          (20 cm or more) lets the 15 degree cone reach the stand or plate
+//   MAX 17: 12 cm standoff plus 5 cm for positioning error. Going further
+//          (22 cm or more) lets the 15 degree cone reach the stand or plate
 //          behind the point and report an object that is not there.
 // Check on the day: run test_combined with nothing at A and B and note the
 // distances. Each empty reading must be at least 3 cm above that point's MAX.
 const float    US_A_MIN_CM      = 3.0;
-const float    US_A_MAX_CM      = 15.0;
+const float    US_A_MAX_CM      = 17.0;
 const float    US_B_MIN_CM      = 3.0;
-const float    US_B_MAX_CM      = 15.0;
+const float    US_B_MAX_CM      = 17.0;
 const uint8_t  US_SAMPLES       = 5;
 const uint8_t  US_MIN_ECHOES    = 3;         // at least this many of the 5 pings must come back
 const unsigned long US_TIMEOUT_US = 25000;
