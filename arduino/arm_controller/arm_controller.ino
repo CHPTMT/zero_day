@@ -100,6 +100,19 @@ const int SERVO_ZERO_LEFT  = 90;
 const int SERVO_ZERO_RIGHT = 90;
 const int SERVO_ZERO_ELBOW = 90;
 
+// Rest position (every servo at 90): base facing straight forward, main arm
+// upright, second arm level and pointing straight out from the main arm.
+
+// Soft start. A hobby servo cannot report where it is, so the first pulse
+// sends it to rest at full speed, which jerks the arm and can lift the base
+// gear out of the turntable groove. Instead each servo gets short bursts of
+// pulses with pauses in between and creeps to rest. The base goes last and
+// slowest. Raise SOFT_BURSTS_BASE if the base still jumps.
+const uint8_t  SOFT_BURSTS       = 15;    // bursts for the second arm and the main arm
+const uint8_t  SOFT_BURSTS_BASE  = 30;    // bursts for the base
+const uint8_t  SOFT_ON_MS        = 22;    // one servo frame of pulses per burst
+const uint8_t  SOFT_OFF_MS       = 110;   // rest between bursts
+
 // Direction of each joint. Flip to -1 if the joint moves the wrong way.
 // MAIN_DIR = 1 means: forward = left servo value goes up, right servo goes down.
 const int8_t BASE_DIR  = 1;
@@ -210,16 +223,18 @@ const float    GESTURE_UP_MM   = 70;    // YES and BOX: aim this far above and b
 const float    GESTURE_DEG     = 15;    // NO and BOX: base turns this far each way
 const float    BOX_LIFT_MM     = 60;    // BOX is drawn this far above B, so its bottom stays clear of the main arm limit
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
-const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
-const uint16_t GESTURE_PAUSE_MS = 400;  // short stop at each end of a swing, so the shape reads clearly
+const uint16_t GESTURE_STEP_MS = 720;   // time for each half swing (20% quicker than before)
+const uint16_t GESTURE_PAUSE_MS = 320;  // short stop at each end of a swing, so the shape reads clearly
+const float    GESTURE_SPEED_DEG_S = 36;   // gestures run 20% faster than ordinary moves
 
-// Point E press. Each press moves the pusher tip straight down, from
+// Point E press. Each press drives the pusher tip straight down, from
 // PRESS_TRAVEL_MM above the button to PRESS_DEPTH_MM into it, and straight
-// back up. The main arm and second arm move together to keep it vertical. Presses run at
-// PRESS_SPEED_DEG_S, faster than other moves, so dots and dashes stay apart.
-const float    PRESS_SPEED_DEG_S  = 60;
+// back up, fast and firm. The main arm and second arm move together to keep
+// it vertical. Pushing 12 mm past contact makes the servos press hard on the
+// button for the whole hold.
+const float    PRESS_SPEED_DEG_S  = 120;
 const float PRESS_TRAVEL_MM   = 36;   // the pusher tip waits this far above the button (more puts the second arm past +45)
-const float PRESS_DEPTH_MM    = 8;    // and pushes this far down past contact
+const float PRESS_DEPTH_MM    = 12;   // and pushes this far down past contact
 
 // Beeper
 const bool     BUZZER_PASSIVE  = true;  // passive buzzer (needs a tone). Set false for an active buzzer
@@ -232,18 +247,19 @@ const uint16_t TASK_GAP_MS     = 2000;  // pause after a task's end beeps
 // SENSOR THRESHOLDS
 // ======================================================================
 // Detection window for each point, in cm from the ultrasonic face. The arm
-// stops 10 cm from A and 7 cm from B, so an object reads about 10 or 7 cm.
-//   MIN 3: the HC-SR04 cannot measure closer than about 2 to 3 cm; nearer
-//          readings are noise.
-//   MAX 15: the standoff plus a margin for positioning error. Going further
-//          (20 cm or more) lets the 15 degree cone reach the stand or plate
-//          behind the point and report an object that is not there.
-// Check on the day: run test_combined with nothing at A and B and note the
-// distances. Each empty reading must be at least 3 cm above that point's MAX.
-const float    US_A_MIN_CM      = 3.0;
-const float    US_A_MAX_CM      = 15.0;
-const float    US_B_MIN_CM      = 3.0;
-const float    US_B_MAX_CM      = 15.0;
+// stops 10 cm from A and 7 cm from B, so an object usually reads 7 to 10 cm.
+//   MIN 2: the HC-SR04 cannot measure closer than about 2 cm.
+//   MAX 25: wide, so an object still counts if the arm stops a little off
+//           or the object sits further back. If an empty point ever reads
+//           as found (the stand behind it echoing), lower this.
+// If nothing is found straight ahead, the arm looks a little left, right,
+// up and down (SCAN_BASE_DEG, SCAN_ELBOW_DEG) before deciding.
+const float    US_A_MIN_CM      = 2.0;
+const float    US_A_MAX_CM      = 25.0;
+const float    US_B_MIN_CM      = 2.0;
+const float    US_B_MAX_CM      = 25.0;
+const float    SCAN_BASE_DEG    = 6;
+const float    SCAN_ELBOW_DEG   = 5;
 const uint8_t  US_SAMPLES       = 5;
 const uint8_t  US_MIN_ECHOES    = 3;         // at least this many of the 5 pings must come back
 const unsigned long US_TIMEOUT_US = 25000;
@@ -253,8 +269,8 @@ const float REF_GREEN[3] = {0.28, 0.44, 0.28};
 const float REF_BLUE[3]  = {0.20, 0.32, 0.48};
 const uint16_t COLOUR_MIN_CLEAR = 30;
 const uint8_t  COLOUR_SAMPLES   = 3;
-const uint16_t COLOUR_LIVE_MS   = 2000;   // LED follows the sensor live at C for this long
-const uint8_t  COLOUR_STEADY    = 3;      // same colour this many readings in a row before the LED changes
+const float    COLOUR_WAVE_BASE_DEG  = 5;   // at C the sensor waves this far left and right
+const float    COLOUR_WAVE_ELBOW_DEG = 4;   // and this far up and down, to cover more of the small target
 const uint16_t LED_CHECK_MS     = 1000;   // each colour shown alone at start up
 
 const uint16_t SOUND_TRIGGER   = 40;
@@ -262,16 +278,17 @@ const uint16_t SOUND_AMP_MIN   = 40;
 const uint16_t SOUND_AMP_MAX   = 600;
 const uint16_t SOUND_WINDOW_MS = 150;
 const unsigned long SOUND_TIMEOUT_MS = 3000;
-const uint16_t SOUND_HOLD_MS   = 4000;   // time spent pointing at the indicator
+const uint16_t SOUND_HOLD_MS   = 3000;   // time spent pointing at the indicator at the end
+const float    SOUND_RISE_DEG_S = 15;     // the arm rises up the scale slowly, like a level meter
 
 // Morse timing, two times slower than before to go easy on the arm. A dot is
 // 1 unit, a dash 3, the gap inside a letter 1 and between letters 3. The
 // receivers split dots from dashes at 1100 ms and end a letter after 1300 ms
 // of silence, halfway between what the button actually sees.
 const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
-const uint16_t PRESS_MOVE_MS  = 300;   // shortest move onto and off the button
+const uint16_t PRESS_MOVE_MS  = 200;   // shortest move onto and off the button
 const int16_t  PRESS_EXTRA_MS = 0;
-// The button only closes in the last 8 mm of the 44 mm push, about 75% of the
+// The button only closes in the last 12 mm of the 48 mm push, about 75% of the
 // way through each eased move. The press the receiver sees is the hold plus
 // the end of the move down and the start of the move up; the gap is the pause
 // plus the rest of both moves. Holds and pauses are cut by those amounts.
@@ -443,6 +460,28 @@ void moveJoint(uint8_t j, float rel, uint16_t ms) {
   Pose p = cur;
   p.a[j] = rel;
   moveTo(p, ms);
+}
+
+// Creep a servo to the value already written to it (see SOFT_BURSTS).
+void softAttach(Servo &s, uint8_t pin, uint8_t bursts) {
+  for (uint8_t i = 0; i < bursts; i++) {
+    s.attach(pin);
+    delay(SOFT_ON_MS);
+    s.detach();
+    delay(SOFT_OFF_MS);
+  }
+  s.attach(pin);
+}
+
+// The two main arm servos together, so they never fight each other.
+void softAttachPair(uint8_t bursts) {
+  for (uint8_t i = 0; i < bursts; i++) {
+    sLeft.attach(PIN_MAIN_LEFT); sRight.attach(PIN_MAIN_RIGHT);
+    delay(SOFT_ON_MS);
+    sLeft.detach(); sRight.detach();
+    delay(SOFT_OFF_MS);
+  }
+  sLeft.attach(PIN_MAIN_LEFT); sRight.attach(PIN_MAIN_RIGHT);
 }
 
 // ======================================================================
@@ -639,7 +678,7 @@ float baseCentre() {
 
 // Move to a gesture pose and stop briefly, so each end of the shape is clear.
 void gestureStep(const Pose &p, uint16_t ms) {
-  moveTo(p, ms);
+  moveAtSpeed(p, ms, GESTURE_SPEED_DEG_S);
   delay(GESTURE_PAUSE_MS);
 }
 
@@ -730,6 +769,28 @@ float readDistanceCm() {
 
 bool inWindow(float d, float lo, float hi) { return d >= lo && d <= hi; }
 
+// Distance straight ahead; if nothing is in the window, look a little left,
+// right, up and down and take the first reading that is. Ends where it began.
+float scanForObject(float lo, float hi) {
+  float d = readDistanceCm();
+  if (inWindow(d, lo, hi)) return d;
+  Pose home = cur;
+  const float look[4][2] = {{SCAN_BASE_DEG, 0}, {-SCAN_BASE_DEG, 0}, {0, SCAN_ELBOW_DEG}, {0, -SCAN_ELBOW_DEG}};
+  Serial.println(F("Nothing straight ahead, looking around the point."));
+  for (uint8_t i = 0; i < 4; i++) {
+    Pose p = home;
+    p.a[J_BASE] += look[i][0];
+    p.a[J_ELBOW] += look[i][1];
+    moveTo(p, 500);
+    delay(150);
+    float e = readDistanceCm();
+    if (inWindow(e, lo, hi)) { d = e; break; }
+    if (d < 0 || (e > 0 && e < d)) d = e;   // keep the nearest echo for the report
+  }
+  moveTo(home, 500);
+  return d;
+}
+
 // ======================================================================
 // COLOUR
 // ======================================================================
@@ -774,23 +835,25 @@ char classifyColour(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   return dg <= db ? 'G' : 'B';
 }
 
-// The LEDs follow what the sensor sees, a fresh reading every 50 ms. The lit
-// LED only changes after COLOUR_STEADY matching readings, so one LED stays on
-// instead of two flickering.
-void showColourLive(uint16_t ms) {
-  if (!tcsOk) return;
-  Serial.println(F("The LEDs now follow what the colour sensor sees for 2 seconds."));
-  char shown = '-', last = '-';
-  uint8_t same = 0;
-  unsigned long end = millis() + ms;
-  while ((long)(end - millis()) > 0) {
-    uint16_t r, g, b, c;
-    tcs.getRawData(&r, &g, &b, &c);
-    char k = classifyColour(r, g, b, c);
-    same = (k == last) ? same + 1 : 1;
-    last = k;
-    if (same >= COLOUR_STEADY && k != shown) { shown = k; setColourLed(k); }
+// Averaged raw reading at the current pose.
+void readRaw(uint32_t &r, uint32_t &g, uint32_t &b, uint32_t &c) {
+  r = g = b = c = 0;
+  for (uint8_t i = 0; i < COLOUR_SAMPLES; i++) {
+    uint16_t rr, gg, bb, cc;
+    tcs.getRawData(&rr, &gg, &bb, &cc);
+    r += rr; g += gg; b += bb; c += cc;
   }
+  r /= COLOUR_SAMPLES; g /= COLOUR_SAMPLES; b /= COLOUR_SAMPLES; c /= COLOUR_SAMPLES;
+}
+
+// How clearly one colour stands out: the strongest share minus the next.
+float colourStrength(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
+  float sum = r + g + b;
+  if (c < COLOUR_MIN_CLEAR || sum == 0) return -1;
+  float v[3] = {r / sum, g / sum, b / sum};
+  float hi = max(v[0], max(v[1], v[2])), lo = min(v[0], min(v[1], v[2]));
+  float mid = v[0] + v[1] + v[2] - hi - lo;
+  return hi - mid;
 }
 
 // Start up check: red, green and blue LEDs one at a time, one second each,
@@ -809,16 +872,30 @@ void ledCheck() {
   Serial.println(F("LED check done. Each LED should have lit alone, in the order red, green, blue, with a beep each."));
 }
 
+// Waves the sensor over the target (centre, left, right, up, down), lights
+// the LED for what it sees at each spot, and keeps the clearest reading.
 // Always returns R, G or B, so the LED always shows a colour.
-char readColour() {
+char scanColour() {
   if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so the red LED is used by default.")); return 'R'; }
+  Serial.println(F("Waving the colour sensor over the target; the LEDs follow what it sees."));
+  Pose home = cur;
+  const float wave[5][2] = {{0, 0}, {COLOUR_WAVE_BASE_DEG, 0}, {-COLOUR_WAVE_BASE_DEG, 0},
+                            {0, COLOUR_WAVE_ELBOW_DEG}, {0, -COLOUR_WAVE_ELBOW_DEG}};
   uint32_t r = 0, g = 0, b = 0, c = 0;
-  for (uint8_t i = 0; i < COLOUR_SAMPLES; i++) {
-    uint16_t rr, gg, bb, cc;
-    tcs.getRawData(&rr, &gg, &bb, &cc);
-    r += rr; g += gg; b += bb; c += cc;
+  float best = -2;
+  for (uint8_t i = 0; i < 5; i++) {
+    Pose p = home;
+    p.a[J_BASE] += wave[i][0];
+    p.a[J_ELBOW] += wave[i][1];
+    moveTo(p, 400);
+    delay(100);
+    uint32_t rr, gg, bb, cc;
+    readRaw(rr, gg, bb, cc);
+    setColourLed(classifyColour(rr, gg, bb, cc));
+    float s = colourStrength(rr, gg, bb, cc);
+    if (s > best) { best = s; r = rr; g = gg; b = bb; c = cc; }
   }
-  r /= COLOUR_SAMPLES; g /= COLOUR_SAMPLES; b /= COLOUR_SAMPLES; c /= COLOUR_SAMPLES;
+  moveTo(home, 400);
   float sum = r + g + b;
   Serial.print(F("Colour sensor readings: red ")); Serial.print(r);
   Serial.print(F(", green ")); Serial.print(g);
@@ -1035,7 +1112,7 @@ void task1() {
   lcdShow(F("Task 1: A and B"));
   lcd.print(F("Going to A"));
   goToStation(ST_A);
-  distA = readDistanceCm();
+  distA = scanForObject(US_A_MIN_CM, US_A_MAX_CM);
   resultA = inWindow(distA, US_A_MIN_CM, US_A_MAX_CM);
   printDistance(F("Point A"), distA, resultA, US_A_MIN_CM, US_A_MAX_CM);
   lcdRow(1);
@@ -1046,7 +1123,7 @@ void task1() {
   Serial.println(F("Going down to Point B, the lower point."));
   lcdRow(0); lcd.print(F("Going to B"));
   goToStation(ST_B);
-  distB = readDistanceCm();
+  distB = scanForObject(US_B_MIN_CM, US_B_MAX_CM);
   resultB = inWindow(distB, US_B_MIN_CM, US_B_MAX_CM);
   printDistance(F("Point B"), distB, resultB, US_B_MIN_CM, US_B_MAX_CM);
   lcdDist(8, 1, 'B', distB);
@@ -1062,8 +1139,7 @@ void task2() {
   lcd.print(F("Going to C"));
   goToStation(ST_C);
   lcdRow(1); lcd.print(F("Reading..."));
-  showColourLive(COLOUR_LIVE_MS);
-  resultColour = readColour();
+  resultColour = scanColour();
   Serial.print(F("Point C: the paper is ")); Serial.print(colourName(resultColour));
   Serial.print(F(". The ")); Serial.print(colourName(resultColour)); Serial.println(F(" LED is now on."));
   setColourLed(resultColour);   // stays lit to the end of the run
@@ -1099,10 +1175,20 @@ void task3() {
   if (resultSound < 0) lcd.print(F("No tap, "));
   else { lcd.print(F("Tap ")); lcd.print(resultLevel); lcd.print(F("% ")); }
   lcd.print(zPoint, 0); lcd.print(F("mm"));
-  Station ind = {"the volume indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {IND_TRIM[0], IND_TRIM[1], IND_TRIM[2]}, &TOOL_US};
-  Pose p;
-  if (stationPose(ind, p)) {
-    moveTo(p, MOVE_MS);   // indicator is next to D, no travel lift needed
+  // Level meter: start at the bottom of the scale, rise slowly to the level
+  // for this tap, drop back, rise again and hold, so the height is obvious.
+  Station ind = {"the volume indicator", IND_THETA, IND_R, IND_Z_LOW, IND_STANDOFF, {IND_TRIM[0], IND_TRIM[1], IND_TRIM[2]}, &TOOL_US};
+  Pose bottom, level;
+  bool okBottom = stationPose(ind, bottom);
+  ind.z = zPoint;
+  if (okBottom && stationPose(ind, level)) {
+    moveTo(bottom, MOVE_MS);   // indicator is next to D, no travel lift needed
+    delay(600);
+    for (uint8_t i = 0; i < 2; i++) {
+      moveAtSpeed(level, 400, SOUND_RISE_DEG_S);
+      delay(800);
+      if (i == 0) { moveAtSpeed(bottom, 400, 2 * SOUND_RISE_DEG_S); delay(300); }
+    }
     printPosition("the volume indicator");
   }
   Serial.print(F("Pointing at the indicator ")); Serial.print(zPoint, 0); Serial.println(F(" mm above the table."));
@@ -1167,12 +1253,13 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   setColourLed('-');
 
-  // Write zero before attaching so nothing jumps on power up.
+  Serial.println(F("\nMoving gently to the rest position (about 8 seconds)."));
+  // Write zero first, then let each servo creep to it: second arm, main arm,
+  // then the base, slowest of all (see SOFT_BURSTS).
   writePose(ZERO_POSE);
-  sBase.attach(PIN_BASE);
-  sLeft.attach(PIN_MAIN_LEFT);
-  sRight.attach(PIN_MAIN_RIGHT);
-  sElbow.attach(PIN_ELBOW);
+  softAttach(sElbow, PIN_ELBOW, SOFT_BURSTS);
+  softAttachPair(SOFT_BURSTS);
+  softAttach(sBase, PIN_BASE, SOFT_BURSTS_BASE);
   writePose(ZERO_POSE);
 
   Serial.println(F("\nGroup 31 robotic arm: demonstration program starting."));

@@ -81,13 +81,13 @@ Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
 Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};
 float PRESS_TRAVEL_MM         = 36;   // changed here with u+ / u- at Point E   // the pusher tip waits this far above the button (more puts the second arm past +45)
-float PRESS_DEPTH_MM          = 8;    // changed here with d+ / d- at Point E    // and pushes this far down past contact
+float PRESS_DEPTH_MM          = 12;   // changed here with d+ / d- at Point E; pushes this far down past contact
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
-const float PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.75;
+const float PRESS_SPEED_DEG_S = 120, PRESS_CLOSE_AT = 0.75;   // same as arm_controller.ino
 const float LIFT_TURN_DEG = 25;
 const float GESTURE_UP_MM = 70;          // same as arm_controller.ino
 const float GESTURE_DEG = 15;
@@ -432,9 +432,9 @@ void printPasteLines() {
 
 void testPress(const Pose &press, const Pose &hover, uint16_t ms) {
   Serial.print(F("Test press: pusher down onto the button for ")); Serial.print(ms); Serial.println(F(" ms and back up."));
-  unsigned long ramp = moveAtSpeed(press, 300, PRESS_SPEED_DEG_S);
+  unsigned long ramp = moveAtSpeed(press, 200, PRESS_SPEED_DEG_S);
   delay(max(0L, (long)ms - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp)));
-  moveAtSpeed(hover, 300, PRESS_SPEED_DEG_S);
+  moveAtSpeed(hover, 200, PRESS_SPEED_DEG_S);
 }
 
 void readSensor(const Stop &st) {
@@ -506,15 +506,28 @@ void runCapture() {
   Serial.println(F("Done. Type any key and press Enter to start again with these trims."));
 }
 
+// Soft start: short bursts of pulses with pauses, so each servo creeps to rest
+// instead of jumping there (same as arm_controller.ino). Base last and slowest.
+void softAttach(Servo &s, uint8_t pin, uint8_t bursts) {
+  for (uint8_t i = 0; i < bursts; i++) { s.attach(pin); delay(22); s.detach(); delay(110); }
+  s.attach(pin);
+}
+void softAttachAll() {
+  softAttach(sElbow, PIN_ELBOW, 15);
+  for (uint8_t i = 0; i < 15; i++) {   // the two main arm servos together, so they never fight
+    sLeft.attach(PIN_MAIN_LEFT); sRight.attach(PIN_MAIN_RIGHT); delay(22);
+    sLeft.detach(); sRight.detach(); delay(110);
+  }
+  sLeft.attach(PIN_MAIN_LEFT); sRight.attach(PIN_MAIN_RIGHT);
+  softAttach(sBase, PIN_BASE, 30);
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(PIN_US_TRIG, OUTPUT);
   pinMode(PIN_US_ECHO, INPUT);
   writePose(ZERO_POSE);
-  sBase.attach(PIN_BASE);
-  sLeft.attach(PIN_MAIN_LEFT);
-  sRight.attach(PIN_MAIN_RIGHT);
-  sElbow.attach(PIN_ELBOW);
+  softAttachAll();
   writePose(ZERO_POSE);
   tcsOk = tcs.begin();
   runCapture();

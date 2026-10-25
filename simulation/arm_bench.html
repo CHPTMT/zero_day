@@ -316,7 +316,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
               <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">A 100, B 70, indicator 60 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
               <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
               <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
-              <tr><td>Button pusher</td><td class="m">70 mm bar under the arm end, tip 90 below its centre line</td><td>E</td><td class="m">36 above, 8 in</td><td>Pushes straight down onto the button and back up, main arm and second arm together.</td></tr>
+              <tr><td>Button pusher</td><td class="m">70 mm bar under the arm end, tip 90 below its centre line</td><td>E</td><td class="m">36 above, 12 in</td><td>Pushes straight down onto the button and back up, main arm and second arm together.</td></tr>
             </tbody>
           </table>
         </div>
@@ -329,7 +329,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     <div class="panel"><h2>2. Main arm</h2><svg id="pMain" viewBox="0 0 420 300" role="img" aria-label="Main arm side face with dimensions"></svg><p class="cap">Side face 50 mm wide, 225 mm pivot to pivot. Driven at the bottom by two servos facing each other, left D3 and right D4, which always turn in opposite directions. 0 = upright, +50 forward, -15 back.</p></div>
     <div class="panel"><h2>3. Second arm</h2><svg id="pSecond" viewBox="0 0 420 300" role="img" aria-label="Second arm side face with dimensions"></svg><p class="cap">Open frame, side face 40 mm wide, 160 mm from its pivot to the end. Servo D5 at the pivot. 0 = level, +45 up, -90 down.</p></div>
     <div class="panel"><h2>4. Sensor array (from above)</h2><svg id="pArray" viewBox="0 0 420 300" role="img" aria-label="Sensor array seen from above with offsets"></svg><p class="cap">Runs along the axis of the second arm from its end. Ultrasonic on the crossbar at the centre, sound sensor on your left leg, colour sensor at the tip of your right leg (you standing in front of the machine).</p></div>
-    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">70 mm bar fixed under the sensor array at the end of the second arm, square to the arm. At Point E the tip moves straight down, from 36 mm above the button to 8 mm into it, and straight back up.</p></div>
+    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">70 mm bar fixed under the sensor array at the end of the second arm, square to the arm. At Point E the tip moves straight down, from 36 mm above the button to 12 mm into it, and straight back up.</p></div>
     <div class="panel"><h2>6. Assembled at zero</h2><svg id="pAll" viewBox="0 0 420 300" role="img" aria-label="Whole arm at the zero pose with key heights"></svg><p class="cap">Base forward, main arm upright, second arm level. Heights from the table.</p></div>
   </section>
 
@@ -384,12 +384,12 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     E:      { name: 'E',       theta: 170, r: 250, z: 300, s: 0,   tool: TOOLS.PUSH }
   };
   // Point E: presses go straight down onto the button (buttonPoint() in arm_controller.ino)
-  var PRESS_TRAVEL = 36, PRESS_DEPTH = 8;
+  var PRESS_TRAVEL = 36, PRESS_DEPTH = 12;
   function buttonPoint(d, name) { return { name: name, theta: ST.E.theta, r: ST.E.r, z: ST.E.z + d, s: 0, tool: TOOLS.PUSH }; }
   ST.EH = buttonPoint(PRESS_TRAVEL, 'E hover');
   ST.EP = buttonPoint(-PRESS_DEPTH, 'E press');
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 60, PRESS_SPEED = 60, CLOSE_AT = 0.75, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
+  var US_MIN = 2, US_MAX = 25, GEST_UP = 70, BOX_LIFT = 60, PRESS_SPEED = 120, CLOSE_AT = 0.75, GEST_PAUSE = 320, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 200, GEST = 15, GEST_MS = 720, GEST_REPS = 2, HOLD = 2000;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -1132,9 +1132,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await goToPose(hov, 'E hover', id);
     log('Each press pushes the pusher tip straight down onto the button and back up.');
     log('Short press on the button (600 ms, a Morse dot).'); setLive('morse', 'short press');
-    btnOn = true; rp = await moveTo(prs, 300, id, PRESS_SPEED); await sleep(Math.max(0, 600 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, 300, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
+    btnOn = true; rp = await moveTo(prs, PRESS_MOVE, id, PRESS_SPEED); await sleep(Math.max(0, 600 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, PRESS_MOVE, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
     log('Long press on the button (1800 ms, a Morse dash).'); setLive('morse', 'long press');
-    btnOn = true; rp = await moveTo(prs, 300, id, PRESS_SPEED); await sleep(Math.max(0, 1800 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, 300, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
+    btnOn = true; rp = await moveTo(prs, PRESS_MOVE, id, PRESS_SPEED); await sleep(Math.max(0, 1800 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, PRESS_MOVE, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
     posLine('E hover');
     setTarget(null);
     await goToPose(ZERO, 'zero', id);

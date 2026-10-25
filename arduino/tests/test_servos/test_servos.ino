@@ -169,13 +169,26 @@ void handle(String cmd) {
   Serial.println(F("Command not recognised. Try b30, m-10, e+, l+, r-, z, s, p or c."));
 }
 
+// Soft start: short bursts of pulses with pauses, so each servo creeps to rest
+// instead of jumping there (same as arm_controller.ino). Base last and slowest.
+void softAttach(Servo &s, uint8_t pin, uint8_t bursts) {
+  for (uint8_t i = 0; i < bursts; i++) { s.attach(pin); delay(22); s.detach(); delay(110); }
+  s.attach(pin);
+}
+void softAttachAll() {
+  softAttach(sElbow, PIN_ELBOW, 15);
+  for (uint8_t i = 0; i < 15; i++) {   // the two main arm servos together, so they never fight
+    sLeft.attach(PIN_MAIN_LEFT); sRight.attach(PIN_MAIN_RIGHT); delay(22);
+    sLeft.detach(); sRight.detach(); delay(110);
+  }
+  sLeft.attach(PIN_MAIN_LEFT); sRight.attach(PIN_MAIN_RIGHT);
+  softAttach(sBase, PIN_BASE, 30);
+}
+
 void setup() {
   Serial.begin(115200);
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
-  sBase.attach(PIN_BASE);
-  sLeft.attach(PIN_MAIN_LEFT);
-  sRight.attach(PIN_MAIN_RIGHT);
-  sElbow.attach(PIN_ELBOW);
+  softAttachAll();
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
 
   Serial.println(F("\nSERVO TEST"));
