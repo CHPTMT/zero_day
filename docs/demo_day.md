@@ -24,10 +24,10 @@ Joint angles from the rest position, and where the sensor in use ends up (height
 |---|---|---|---|---|
 | A | 80 left | 24 forward | 20 up | Arm high, ultrasonic 10 cm from A (at 250 mm out, 327 mm up) |
 | B | 80 left | 47 forward | 11 up | Arm leans well forward, ultrasonic looking down at B from 7 cm (294 mm out, 191 mm up). The colour sensor tip reaches 364 mm out and 143 mm up, just past B: check it clears whatever sits at B |
-| C | 22 left | 33 forward | 41 down | Clear dip: second arm points steeply down, colour sensor 15 mm off the paper at 84 mm |
+| C | 22 left | 33 forward | 41 down | Clear dip: second arm points about 75 degrees down, colour sensor tip just in front of the blue face, looking steeply down at it (see Point C below) |
 | D | 1 right | 13 forward | 11 down | Second arm tilted down, sound sensor 4 cm from the tap point |
 | Indicator | 20 right | 35 forward (quiet) to 14 forward (loud) | 13 down to 15 up | Ultrasonic 6 cm from the scale, pointing at 150 mm (quiet) up to 350 mm (loud) |
-| E | 80 right | 23 forward | 43 up above the button, 25 up pressing | Arm swung right; each press tilts the second arm 18 degrees down so the pusher drops 52 mm onto the button |
+| E | 85 right off the button, 79 right pressing | 11 forward off, 20 forward pressing | 34 up | Arm swung right; each press pushes the pusher tip 52 mm along the button's own axis, from 44 mm off it to 8 mm in |
 
 Gestures, one per run, each a different shape. YES (object at A): the sensor moves straight up and down about 40 mm, twice. NO (object at B): the base turns 15 degrees left and right, twice. BOX (nothing at A or B): the sensor traces a square, up, across, down and back. Each swing takes 900 ms with a short stop at each end, and the Serial Monitor prints a `Gesture:` line.
 
@@ -45,7 +45,14 @@ How to set them on the day: run `test_combined` with nothing at A and B and note
 
 The arm stays still for 2 s at every point before it does anything there. Between A and B it lifts up, turns 25 degrees towards the front, then turns back and leans down to B, so the two visits are clearly separate. The arm cannot bring the sensor down level with B (150 mm) with these arm lengths, so at B it looks down at the point from 7 cm away.
 
-Each Morse press at E is the second arm tilting 18 degrees down and back up, with the base and main arm still: the pusher drops 52 mm, from about 45 mm above the button to 8 mm into it. Presses move at 60 degrees per second, faster than the rest of the run, so dots and dashes stay apart. If the second arm servo cannot manage it, set `PRESS_MAIN_ARM_ONLY` to true and the main arm leans forward for each press instead.
+Each Morse press at E pushes the 70 mm pusher in a straight line along the button's own axis, from 44 mm off the button to 8 mm into it. The breadboard sits on the E stand's sloping top, so a straight-down press would slide off the cap. Set two values in `arm_controller.ino`, `test_combined.ino` and `capture_points.ino`: `E_STAND_ANGLE_DEG`, the base map tick where the E stand's base touches E's circle (45 in the photo), and `BUTTON_TILT_DEG`, the breadboard's slope from flat (0 = button facing straight up, 90 = upright), measured with a phone level. Both are set to 45 until measured. Presses move at 60 degrees per second, faster than the rest of the run, so dots and dashes stay apart. The timing decodes correctly as long as the button closes within the first 7 mm of the 8 mm push.
+
+## Point C
+
+C is a flat vertical face: blue paper on the end of the stand's bar, facing back towards the arm, centred about 70 mm up. With 225 mm and 160 mm links and the pivot 130 mm up, the arm cannot get low enough to look at it level. At C the second arm always points about 75 degrees down, so with the colour sensor along the arm it looks steeply down at the face from a few mm away. Two ways to handle it:
+
+1. Leave the sensor as it is. Check with `capture_points` (`s` at C) that it reads the blue clearly with its own LED on, and calibrate the colours in that pose.
+2. Better: tilt the colour sensor up on the board, on a 60 to 70 degree wedge, and set `COLOUR_PITCH_DEG` to the angle. The arm pose at C hardly changes, but the sensor then looks at the face almost level, 15 mm away. The colour sensor is only used at C, so the tilt affects nothing else.
 
 Morse receiver settings, worked out from the pusher's real motion. The button sees dots of 400 to 600 ms, dashes of 1600 to 1800 ms, gaps of 700 to 900 ms inside a letter and 1780 to 1980 ms between letters (the spread depends on how far down the button switches). Both receivers now split dot from dash at 1100 ms and end a letter after 1300 ms of silence, each about halfway between the bands. `morse_receiver` ends a word after 3 s of silence; `morse_receiver_i2c` shows the word after the third letter and uses 4 s only for shorter words.
 

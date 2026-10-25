@@ -11,7 +11,7 @@
  *   TASK 2  Point C: colour sensor, the red, green or blue LED lights
  *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
  *   TASK 4  Point E: press the button in Morse for the 3 letter word; each
- *           press is the second arm tilting down onto the button and back up
+ *           press pushes the pusher straight into the button along its axis
  *   FINISH  back to zero, print a summary
  * Beeper on D11: task N beeps N times when it starts and N times when it
  * ends, then a 2 s pause before the next task.
@@ -129,14 +129,19 @@ struct Tool {
   const char *name;
   float along, down, side;
   bool pressDown;   // true: approach along the "down" direction (pusher)
+  float pitch;      // degrees the sensor is tilted up from the arm's axis (0 = looks straight along the arm)
 };
 const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
 const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
-const Tool TOOL_RGB    = {"colour",     83,  0,  45, false};  // 83 mm out (the tip), 45 mm to your right
-const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 30 mm bar under the arm end: tip 20 + 30 = 50 mm below the arm's centre line
-// 30 mm bar chosen: at Point E it presses within 2 deg of straight down with the
-// second arm at about +25, well inside its +45 limit. Longer bars tilt more
-// (50 mm: 8 deg, 100 mm: 21 deg) and push the second arm closer to its limit.
+// Point C is a flat vertical face (blue paper on the end of the stand's bar, facing
+// back towards the arm), 70 mm up. The arm cannot get low enough to look at it
+// level: at C the second arm always points about 75 degrees down. With the colour
+// sensor along the arm it looks steeply down at the face from a few mm away. Tilt
+// the sensor up on the board by COLOUR_PITCH_DEG (a 60 to 70 degree wedge) and it
+// looks at the face almost level, 15 mm away. Measure the angle you glue it at.
+const float COLOUR_PITCH_DEG = 0;
+const Tool TOOL_RGB    = {"colour",     83,  0,  45, false, COLOUR_PITCH_DEG};  // 83 mm out (the tip), 45 mm to your right
+const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true};   // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
 // Pusher note: if a pose ever needs the second arm past +45 at Point E, the
 // arm holds +45 and sets the pusher height instead (see pressAtLimit).
 
@@ -167,8 +172,7 @@ Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US}; 
 Station ST_B       = {"Point B",       10, 350, 150,  70, {0, 0, 0}, &TOOL_US};      // 7 cm, so the arm leans clearly lower than at A
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
 Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
-Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // used only by the main arm fallback
-Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
+Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};  // button top; presses follow its axis (see buttonPoint)
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
 // IND_Z_HIGH (loud) at theta 110, R 275.
@@ -204,14 +208,21 @@ const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
 const uint16_t GESTURE_PAUSE_MS = 400;  // short stop at each end of a swing, so the shape reads clearly
 
-// Point E press. Each press is the second arm tilting PRESS_LIFT_DEG: up off
-// the button, down onto it, up again, with the base and main arm still. The
-// pusher tip moves about 50 mm, easy to see. Presses run at PRESS_SPEED_DEG_S
-// (faster than other moves) so a 600 ms dot and an 1800 ms dash stay apart.
-// PRESS_MAIN_ARM_ONLY = true is a fallback that presses by leaning the main arm.
-const float    PRESS_LIFT_DEG     = 18;
+// Point E press. Each press moves the pusher tip in a straight line along the
+// button's axis, from PRESS_TRAVEL_MM off it to PRESS_DEPTH_MM into it and
+// back, so it pushes square on even though the button is on a slope. The main
+// arm and second arm (and the base a little) move together. Presses run at
+// PRESS_SPEED_DEG_S, faster than other moves, so dots and dashes stay apart.
 const float    PRESS_SPEED_DEG_S  = 60;
-const bool     PRESS_MAIN_ARM_ONLY = false;
+// The button's own axis on the E stand. Read E_STAND_ANGLE_DEG off the base map
+// ticks where the stand's base touches E's circle (0 = top, clockwise; it is 45
+// in the photo). BUTTON_TILT_DEG is the breadboard's slope from flat (0 = button
+// facing straight up, 90 = upright facing the circle centre). Measure it with a
+// phone level on the breadboard.
+const float E_STAND_ANGLE_DEG = 45;
+const float BUTTON_TILT_DEG   = 45;
+const float PRESS_TRAVEL_MM   = 44;   // the pusher tip waits this far off the button, on its axis
+const float PRESS_DEPTH_MM    = 8;    // and pushes this far past contact
 
 // Beeper
 const bool     BUZZER_PASSIVE  = true;  // passive buzzer (needs a tone). Set false for an active buzzer
@@ -261,10 +272,9 @@ const uint16_t SOUND_HOLD_MS   = 4000;   // time spent pointing at the indicator
 // receivers split dots from dashes at 1100 ms and end a letter after 1300 ms
 // of silence, halfway between what the button actually sees.
 const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
-const uint16_t PRESS_MOVE_MS  = 300;   // shortest move onto and off the button; an 18 degree press at
-                                       // 60 deg/s takes about 470 ms, and the gaps allow for that
+const uint16_t PRESS_MOVE_MS  = 300;   // shortest move onto and off the button
 const int16_t  PRESS_EXTRA_MS = 0;
-// The button only closes in the last 8 mm of the 52 mm drop, about 77% of the
+// The button only closes in the last 8 mm of the 52 mm push, about 77% of the
 // way through each eased move. The press the receiver sees is the hold plus
 // the end of the move down and the start of the move up; the gap is the pause
 // plus the rest of both moves. Holds and pauses are cut by those amounts.
@@ -373,6 +383,23 @@ void toolPoint(const Pose &p, const Tool &t, float &theta, float &r, float &z) {
   theta = 90 - p.a[J_BASE] - degrees(atan2(t.side, rin));
 }
 
+// Point E. The breadboard sits on the E stand's sloping top, so the button
+// faces up and leans BUTTON_TILT_DEG towards the centre of E's circle. This
+// gives the point d mm out from the button along its own axis (negative =
+// pushed into it), for the pusher tip to go to.
+Station buttonPoint(float d) {
+  float t = radians(BUTTON_TILT_DEG), f = radians(E_STAND_ANGLE_DEG + 180);   // map angle the button faces
+  float nx = -sin(t) * sin(f), ny = sin(t) * cos(f), nz = cos(t);   // x = the arm's left, y = forward
+  float x = ST_E.r * cos(radians(ST_E.theta)) + d * nx;
+  float y = ST_E.r * sin(radians(ST_E.theta)) + d * ny;
+  Station s = ST_E;
+  s.theta = degrees(atan2(y, x));
+  s.r = sqrt(x * x + y * y);
+  s.z += d * nz;
+  s.standoff = 0;
+  return s;
+}
+
 // Joint angles that put a tool `standoff` mm from the station point, facing
 // it. The arm end and the tool form one rigid link, so this is a two link
 // solution in the arm's plane; the base angle is corrected for the side
@@ -387,8 +414,8 @@ bool toolIK(const Station &s, Pose &out) {
   float baseRel = 90 - s.theta - degrees(atan2(t.side, rin));   // A and B: +80, E: -80
   float psi = 0;
   for (uint8_t it = 0; it < 6; it++) {
-    float ax = t.pressDown ? sin(psi) : cos(psi);    // direction the tool points
-    float az = t.pressDown ? -cos(psi) : sin(psi);
+    float look = t.pressDown ? psi - HALF_PI : psi + radians(t.pitch);   // direction the tool points
+    float ax = cos(look), az = sin(look);
     float tr = rin - ax * s.standoff;
     float tz = s.z - az * s.standoff;
     float dz = tz - SHOULDER_HEIGHT_MM;
@@ -943,25 +970,14 @@ void task3() {
 
 void task4() {
   Serial.println(F("\nTASK 4 of 4: pressing the word in Morse code on the button at Point E."));
-  if (!stationPose(ST_E_PRESS, pressPose)) {
+  if (!stationPose(buttonPoint(-PRESS_DEPTH_MM), pressPose) || !stationPose(buttonPoint(PRESS_TRAVEL_MM), hoverPose)) {
     Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
   }
-  hoverPose = pressPose;
-  if (PRESS_MAIN_ARM_ONLY) {
-    // Fallback: same pose with the main arm leaned back off the button.
-    setTipHeight(hoverPose, ST_E_HOVER.z + ST_E_HOVER.standoff);
-  } else {
-    // Same pose with only the second arm tilted up off the button.
-    hoverPose.a[J_ELBOW] = min(pressPose.a[J_ELBOW] + PRESS_LIFT_DEG, REL_MAX[J_ELBOW]);
-  }
-  goToPose(hoverPose, "Point E (above the button)");
-  float th, r, zUp, zDown;
-  toolPoint(hoverPose, TOOL_PUSHER, th, r, zUp);
-  toolPoint(pressPose, TOOL_PUSHER, th, r, zDown);
-  Serial.print(F("Each press tilts the second arm ")); Serial.print(hoverPose.a[J_ELBOW] - pressPose.a[J_ELBOW], 1);
-  Serial.print(F(" degrees down and back up: the pusher drops ")); Serial.print(zUp - zDown, 0);
-  Serial.println(F(" mm onto the button."));
+  goToPose(hoverPose, "Point E (off the button)");
+  Serial.print(F("Each press pushes the pusher tip ")); Serial.print(PRESS_TRAVEL_MM + PRESS_DEPTH_MM, 0);
+  Serial.print(F(" mm along the button's axis (tilted ")); Serial.print(BUTTON_TILT_DEG, 0);
+  Serial.print(F(" degrees from upright), ending ")); Serial.print(PRESS_DEPTH_MM, 0); Serial.println(F(" mm into the button."));
   sendMorseWord(targetWord);
 }
 

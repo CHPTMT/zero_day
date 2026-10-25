@@ -17,7 +17,7 @@
  *   p                  print the paste lines now
  *
  * The points, in order: A, B, C, D, the volume indicator at its quiet end
- * (150 mm) and loud end (350 mm), and E (pressing). The indicator has one
+ * (150 mm) and loud end (350 mm), and E (the button). The indicator has one
  * trim for its whole scale; set it at the quiet end, then check the loud end.
  *
  * Servo zeros, directions, dimensions and stations are copies of
@@ -50,14 +50,19 @@ struct Tool {
   const char *name;
   float along, down, side;
   bool pressDown;   // true: approach along the "down" direction (pusher)
+  float pitch;      // degrees the sensor is tilted up from the arm's axis (0 = looks straight along the arm)
 };
 const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
 const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
-const Tool TOOL_RGB    = {"colour",     83,  0,  45, false};  // 83 mm out (the tip), 45 mm to your right
-const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 30 mm bar under the arm end: tip 20 + 30 = 50 mm below the arm's centre line
-// 30 mm bar chosen: at Point E it presses within 2 deg of straight down with the
-// second arm at about +25, well inside its +45 limit. Longer bars tilt more
-// (50 mm: 8 deg, 100 mm: 21 deg) and push the second arm closer to its limit.
+// Point C is a flat vertical face (blue paper on the end of the stand's bar, facing
+// back towards the arm), 70 mm up. The arm cannot get low enough to look at it
+// level: at C the second arm always points about 75 degrees down. With the colour
+// sensor along the arm it looks steeply down at the face from a few mm away. Tilt
+// the sensor up on the board by COLOUR_PITCH_DEG (a 60 to 70 degree wedge) and it
+// looks at the face almost level, 15 mm away. Measure the angle you glue it at.
+const float COLOUR_PITCH_DEG = 0;
+const Tool TOOL_RGB    = {"colour",     83,  0,  45, false, COLOUR_PITCH_DEG};  // 83 mm out (the tip), 45 mm to your right
+const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true};   // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
 // Pusher note: if a pose ever needs the second arm past +45 at Point E, the
 // arm holds +45 and sets the pusher height instead (see pressAtLimit).
 
@@ -71,14 +76,22 @@ Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND
 Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
-Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // 40 mm above the button, so each press is easy to see
-Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
+Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};
+// The button's own axis on the E stand. Read E_STAND_ANGLE_DEG off the base map
+// ticks where the stand's base touches E's circle (0 = top, clockwise; it is 45
+// in the photo). BUTTON_TILT_DEG is the breadboard's slope from flat (0 = button
+// facing straight up, 90 = upright facing the circle centre). Measure it with a
+// phone level on the breadboard.
+const float E_STAND_ANGLE_DEG = 45;
+const float BUTTON_TILT_DEG   = 45;
+const float PRESS_TRAVEL_MM   = 44;   // the pusher tip waits this far off the button, on its axis
+const float PRESS_DEPTH_MM    = 8;    // and pushes this far past contact
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
-const float PRESS_LIFT_DEG = 18, PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.77;
+const float PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.77;
 const float LIFT_TURN_DEG = 25;
 const float GESTURE_UP_MM = 70;          // same as arm_controller.ino
 const float GESTURE_DEG = 15;
@@ -160,6 +173,23 @@ void toolPoint(const Pose &p, const Tool &t, float &theta, float &r, float &z) {
   theta = 90 - p.a[J_BASE] - degrees(atan2(t.side, rin));
 }
 
+// Point E. The breadboard sits on the E stand's sloping top, so the button
+// faces up and leans BUTTON_TILT_DEG towards the centre of E's circle. This
+// gives the point d mm out from the button along its own axis (negative =
+// pushed into it), for the pusher tip to go to.
+Station buttonPoint(float d) {
+  float t = radians(BUTTON_TILT_DEG), f = radians(E_STAND_ANGLE_DEG + 180);   // map angle the button faces
+  float nx = -sin(t) * sin(f), ny = sin(t) * cos(f), nz = cos(t);   // x = the arm's left, y = forward
+  float x = ST_E.r * cos(radians(ST_E.theta)) + d * nx;
+  float y = ST_E.r * sin(radians(ST_E.theta)) + d * ny;
+  Station s = ST_E;
+  s.theta = degrees(atan2(y, x));
+  s.r = sqrt(x * x + y * y);
+  s.z += d * nz;
+  s.standoff = 0;
+  return s;
+}
+
 // Joint angles that put a tool `standoff` mm from the station point, facing
 // it. The arm end and the tool form one rigid link, so this is a two link
 // solution in the arm's plane; the base angle is corrected for the side
@@ -174,8 +204,8 @@ bool toolIK(const Station &s, Pose &out) {
   float baseRel = 90 - s.theta - degrees(atan2(t.side, rin));   // A and B: +80, E: -80
   float psi = 0;
   for (uint8_t it = 0; it < 6; it++) {
-    float ax = t.pressDown ? sin(psi) : cos(psi);    // direction the tool points
-    float az = t.pressDown ? -cos(psi) : sin(psi);
+    float look = t.pressDown ? psi - HALF_PI : psi + radians(t.pitch);   // direction the tool points
+    float ax = cos(look), az = sin(look);
     float tr = rin - ax * s.standoff;
     float tz = s.z - az * s.standoff;
     float dz = tz - SHOULDER_HEIGHT_MM;
@@ -364,20 +394,21 @@ enum Kind : uint8_t { K_DIST, K_COLOUR, K_SOUND, K_IND, K_PRESS };
 struct Stop { Station *s; Kind kind; };
 Stop STOPS[] = {
   {&ST_A, K_DIST}, {&ST_B, K_DIST}, {&ST_C, K_COLOUR}, {&ST_D, K_SOUND},
-  {&ST_IND_LO_C, K_IND}, {&ST_IND_HI_C, K_IND}, {&ST_E_PRESS, K_PRESS},
+  {&ST_IND_LO_C, K_IND}, {&ST_IND_HI_C, K_IND}, {&ST_E, K_PRESS},
 };
 const uint8_t NSTOPS = sizeof(STOPS) / sizeof(STOPS[0]);
 
 float *trimOf(const Stop &st) { return st.kind == K_IND ? indTrim : st.s->trim; }
 
-// Pose for a stop with its current trim. At E the arm waits above the button,
-// with the second arm tilted up PRESS_LIFT_DEG, as in arm_controller.
+// Pose for a stop with its current trim. At E the arm waits off the button on
+// its axis, as in arm_controller, and press is the pose 8 mm into it.
 bool stopPose(const Stop &st, Pose &press, Pose &shown) {
+  if (st.kind == K_PRESS)
+    return stationPose(buttonPoint(-PRESS_DEPTH_MM), press) && stationPose(buttonPoint(PRESS_TRAVEL_MM), shown);
   Station s = *st.s;
   for (uint8_t j = 0; j < NJ; j++) s.trim[j] = trimOf(st)[j];
   if (!stationPose(s, press)) return false;
   shown = press;
-  if (st.kind == K_PRESS) shown.a[J_ELBOW] = min(press.a[J_ELBOW] + PRESS_LIFT_DEG, REL_MAX[J_ELBOW]);
   return true;
 }
 
@@ -401,16 +432,13 @@ void printPasteLines() {
   printStationLine("ST_B", ST_B);
   printStationLine("ST_C", ST_C);
   printStationLine("ST_D", ST_D);
-  Station hover = ST_E_HOVER;
-  for (uint8_t j = 0; j < NJ; j++) hover.trim[j] = ST_E_PRESS.trim[j];
-  printStationLine("ST_E_HOVER", hover);
-  printStationLine("ST_E_PRESS", ST_E_PRESS);
+  printStationLine("ST_E", ST_E);
   Serial.print(F("float IND_TRIM[NJ] = ")); printTrim(indTrim); Serial.println(';');
   Serial.println(F("-----------------------------------------------------------------------------------------"));
 }
 
 void testPress(const Pose &press, const Pose &hover) {
-  Serial.println(F("Test press: second arm down onto the button for 600 ms and back up."));
+  Serial.println(F("Test press: pusher into the button for 600 ms and back out."));
   unsigned long ramp = moveAtSpeed(press, 300, PRESS_SPEED_DEG_S);
   delay(max(0L, 600L - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp)));
   moveAtSpeed(hover, 300, PRESS_SPEED_DEG_S);

@@ -316,7 +316,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
               <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">A 100, B 70, indicator 60 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
               <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
               <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
-              <tr><td>Button pusher</td><td class="m">30 mm bar under the arm end, tip 50 below its centre line</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length. If E ever needs the 2nd arm past +45, the arm holds +45 and sets the pusher height instead.</td></tr>
+              <tr><td>Button pusher</td><td class="m">70 mm bar under the arm end, tip 90 below its centre line</td><td>E</td><td class="m">44 off, 8 in</td><td>Pushes in a straight line along the button's axis (the breadboard is on a 45° slope), main arm and second arm together.</td></tr>
             </tbody>
           </table>
         </div>
@@ -329,7 +329,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     <div class="panel"><h2>2. Main arm</h2><svg id="pMain" viewBox="0 0 420 300" role="img" aria-label="Main arm side face with dimensions"></svg><p class="cap">Side face 50 mm wide, 225 mm pivot to pivot. Driven at the bottom by two servos facing each other, left D3 and right D4, which always turn in opposite directions. 0 = upright, +50 forward, -15 back.</p></div>
     <div class="panel"><h2>3. Second arm</h2><svg id="pSecond" viewBox="0 0 420 300" role="img" aria-label="Second arm side face with dimensions"></svg><p class="cap">Open frame, side face 40 mm wide, 160 mm from its pivot to the end. Servo D5 at the pivot. 0 = level, +45 up, -90 down.</p></div>
     <div class="panel"><h2>4. Sensor array (from above)</h2><svg id="pArray" viewBox="0 0 420 300" role="img" aria-label="Sensor array seen from above with offsets"></svg><p class="cap">Runs along the axis of the second arm from its end. Ultrasonic on the crossbar at the centre, sound sensor on your left leg, colour sensor at the tip of your right leg (you standing in front of the machine).</p></div>
-    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">30 mm bar fixed under the sensor array at the end of the second arm, square to the arm, so it points straight down when the second arm is level. At Point E it presses within 2° of straight down with the second arm at about +25°. Longer bars tilt more when pressing: 50 mm tilts 8°, 100 mm tilts 21°.</p></div>
+    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">70 mm bar fixed under the sensor array at the end of the second arm, square to the arm. At Point E the tip moves in a straight line along the button's own axis, from 44 mm off it to 8 mm in, because the button sits on the stand's sloping top.</p></div>
     <div class="panel"><h2>6. Assembled at zero</h2><svg id="pAll" viewBox="0 0 420 300" role="img" aria-label="Whole arm at the zero pose with key heights"></svg><p class="cap">Base forward, main arm upright, second arm level. Heights from the table.</p></div>
   </section>
 
@@ -369,8 +369,8 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   var TOOLS = {
     US:   { name: 'ultrasonic', along: 0,  down: 0,  side: 0,   press: false },
     SND:  { name: 'sound',      along: 42, down: 0,  side: -45, press: false },
-    RGB:  { name: 'colour',     along: 83, down: 0,  side: 45,  press: false },
-    PUSH: { name: 'pusher',     along: 0,  down: 50, side: 0,   press: true }   // 30 mm bar under the 40 mm arm: tip 50 below its centre line
+    RGB:  { name: 'colour',     along: 83, down: 0,  side: 45,  press: false, pitch: 0 },   // pitch = COLOUR_PITCH_DEG
+    PUSH: { name: 'pusher',     along: 0,  down: 90, side: 0,   press: true }   // 70 mm bar under the 40 mm arm: tip 90 below its centre line
   };
   var MIN = [-90, -15, -90], MAX = [90, 50, 45];
   var ZERO = [0, 0, 0];
@@ -381,11 +381,21 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 40,  tool: TOOLS.SND },
     INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60, tool: TOOLS.US },
     INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 60, tool: TOOLS.US },
-    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 40,  tool: TOOLS.PUSH },
-    EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
+    E:      { name: 'E',       theta: 170, r: 250, z: 300, s: 0,   tool: TOOLS.PUSH }
   };
+  // Point E: the button sits on the stand's sloping top, so presses run along its own axis
+  // (buttonPoint() in arm_controller.ino). Stand at 45 on E's circle, breadboard 45 from flat.
+  var E_STAND = 45, BTN_TILT = 45, PRESS_TRAVEL = 44, PRESS_DEPTH = 8;
+  function buttonPoint(d, name) {
+    var t = BTN_TILT * (Math.PI / 180), fa = (E_STAND + 180) * (Math.PI / 180);
+    var nx = -Math.sin(t) * Math.sin(fa), ny = Math.sin(t) * Math.cos(fa), nz = Math.cos(t);
+    var x = ST.E.r * Math.cos(ST.E.theta * (Math.PI / 180)) + d * nx, y = ST.E.r * Math.sin(ST.E.theta * (Math.PI / 180)) + d * ny;
+    return { name: name, theta: Math.atan2(y, x) / (Math.PI / 180), r: Math.hypot(x, y), z: ST.E.z + d * nz, s: 0, tool: TOOLS.PUSH };
+  }
+  ST.EH = buttonPoint(PRESS_TRAVEL, 'E hover');
+  ST.EP = buttonPoint(-PRESS_DEPTH, 'E press');
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 60, PRESS_LIFT = 18, PRESS_SPEED = 60, CLOSE_AT = 0.77, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
+  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 60, PRESS_SPEED = 60, CLOSE_AT = 0.77, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -426,7 +436,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var rin = Math.sqrt(st.r * st.r - t.side * t.side);
     var base = 90 - st.theta - Math.atan2(t.side, rin) / RAD, psi = 0, out = null;
     for (var it = 0; it < 6; it++) {
-      var ax = t.press ? Math.sin(psi) : Math.cos(psi), az = t.press ? -Math.cos(psi) : Math.sin(psi);
+      var look = t.press ? psi - Math.PI / 2 : psi + (t.pitch || 0) * RAD, ax = Math.cos(look), az = Math.sin(look);
       var tr = rin - ax * st.s, tz = st.z - az * st.s, dz = tz - SH, D = Math.hypot(tr, dz);
       if (D < 1 || D > L1 + l2 || D < Math.abs(L1 - l2)) return null;
       var c = (L1 * L1 + D * D - l2 * l2) / (2 * L1 * D);
@@ -452,7 +462,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
   // Plain names for places, matching the sketches' Serial Monitor text
   var PLACE = { 'A': 'Point A', 'B': 'Point B', 'C': 'Point C', 'D': 'Point D',
-    'E hover': 'Point E (above the button)', 'E press': 'Point E (pressing)', 'indicator': 'the volume indicator',
+    'E hover': 'Point E (off the button)', 'E press': 'Point E (pressing)', 'indicator': 'the volume indicator',
     'ind low': 'the volume indicator (quiet end)', 'ind mid': 'the volume indicator (middle)', 'ind high': 'the volume indicator (loud end)',
     'zero': 'the rest position', 'manual': 'the position you set' };
   function place(n) { return PLACE[n] || n; }
@@ -493,11 +503,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h += '<line x1="' + sx(400) + '" y1="' + sy(0) + '" x2="' + sx(400) + '" y2="' + sy(400) + '" stroke="var(--muted)" stroke-dasharray="4 5"/>';
     h += '<text class="t-txt" x="' + (sx(400) + 4) + '" y="' + sy(404) + '">R 400</text>';
     // test stands that lie in the plane the arm faces (5 x 5 cm plates on posts)
-    if (Math.abs(ST.EH.theta - k.theta) <= 3) {   // Point E: button on its breadboard, top face at z 300
-      h += '<line x1="' + sx(ST.EH.r) + '" y1="' + sy(0) + '" x2="' + sx(ST.EH.r) + '" y2="' + sy(ST.EH.z - 30) + '" stroke="var(--line)" stroke-width="6"/>';
-      h += '<rect x="' + sx(ST.EH.r - 40) + '" y="' + sy(ST.EH.z - 18) + '" width="80" height="12" fill="var(--bb)" stroke="var(--muted)"/>';
-      h += '<rect x="' + sx(ST.EH.r - 15) + '" y="' + sy(ST.EH.z - (btnOn ? 4 : 0)) + '" width="30" height="' + (12 - (btnOn ? 4 : 0)) + '" fill="var(--muted)"/>';
-      h += '<text class="t-txt" x="' + sx(ST.EH.r + 46) + '" y="' + sy(ST.EH.z - 14) + '">E button</text>';
+    if (Math.abs(ST.E.theta - k.theta) <= 6) {   // Point E: button on its breadboard, top face at z 300
+      h += '<line x1="' + sx(ST.E.r) + '" y1="' + sy(0) + '" x2="' + sx(ST.E.r) + '" y2="' + sy(ST.E.z - 30) + '" stroke="var(--line)" stroke-width="6"/>';
+      h += '<rect x="' + sx(ST.E.r - 40) + '" y="' + sy(ST.E.z - 18) + '" width="80" height="12" fill="var(--bb)" stroke="var(--muted)"/>';
+      h += '<rect x="' + sx(ST.E.r - 15) + '" y="' + sy(ST.E.z - (btnOn ? 4 : 0)) + '" width="30" height="' + (12 - (btnOn ? 4 : 0)) + '" fill="var(--muted)"/>';
+      h += '<text class="t-txt" x="' + sx(ST.E.r + 46) + '" y="' + sy(ST.E.z - 14) + '">E button</text>';
     }
     [ST.A, ST.B, ST.C, ST.D].forEach(function (st) {
       // a stand shows when the sensor aimed at it lines up, drawn at its distance in the arm's plane
@@ -737,11 +747,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h = band(X, Y, 0, 0, 160, 0, SEC_W, 0, 1, 'var(--link2)', 0.9);
     h += '<line x1="' + X(160) + '" y1="' + Y(0) + '" x2="' + X(215) + '" y2="' + Y(0) + '" stroke="var(--muted)" stroke-width="6" stroke-linecap="round"/>';
     h += '<text class="t-txt" x="' + X(190) + '" y="' + (Y(0) - 10) + '" text-anchor="middle">sensor array</text>';
-    h += '<line x1="' + X(160) + '" y1="' + Y(-20) + '" x2="' + X(160) + '" y2="' + Y(-50) + '" stroke="var(--warn)" stroke-width="7" stroke-linecap="round"/>';
-    h += dimLine(X(175), Y(-20), X(175), Y(-50), '30', [16, 4]);
-    h += dimLine(X(140), Y(0), X(140), Y(-50), '50 from centre line', [-72, -12]);
-    h += '<text class="t-ink" x="' + X(160) + '" y="' + (Y(-50) + 20) + '" text-anchor="middle">pusher tip</text>';
-    h += '<text class="t-txt" x="' + X(40) + '" y="' + (Y(-50) + 44) + '">square to the arm: straight down when level</text>';
+    h += '<line x1="' + X(160) + '" y1="' + Y(-20) + '" x2="' + X(160) + '" y2="' + Y(-90) + '" stroke="var(--warn)" stroke-width="7" stroke-linecap="round"/>';
+    h += dimLine(X(175), Y(-20), X(175), Y(-90), '70', [16, 4]);
+    h += dimLine(X(140), Y(0), X(140), Y(-90), '90 from centre line', [-72, -12]);
+    h += '<text class="t-ink" x="' + X(160) + '" y="' + (Y(-90) + 20) + '" text-anchor="middle">pusher tip</text>';
+    h += '<text class="t-txt" x="' + X(40) + '" y="' + (Y(-90) + 40) + '">square to the arm</text>';
     $('pPusher').innerHTML = h;
 
     // 6. assembled at zero
@@ -752,11 +762,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h += band(X, Y, 0, SH, z0.ex, z0.ez, MAIN_W, 0, 1, 'var(--accent)', 0.85);
     h += band(X, Y, z0.ex, z0.ez, z0.wx, z0.wz, SEC_W, 0, 1, 'var(--link2)', 0.9);
     h += '<line x1="' + X(z0.wx) + '" y1="' + Y(z0.wz) + '" x2="' + X(z0.wx + 83) + '" y2="' + Y(z0.wz) + '" stroke="var(--muted)" stroke-width="4"/>';
-    h += '<line x1="' + X(z0.wx) + '" y1="' + Y(z0.wz - 20) + '" x2="' + X(z0.wx) + '" y2="' + Y(z0.wz - 50) + '" stroke="var(--warn)" stroke-width="5"/>';
+    h += '<line x1="' + X(z0.wx) + '" y1="' + Y(z0.wz - 20) + '" x2="' + X(z0.wx) + '" y2="' + Y(z0.wz - 90) + '" stroke="var(--warn)" stroke-width="5"/>';
     h += dimLine(X(-140), Y(0), X(-140), Y(SH), '130', [-18, 4]);
     h += dimLine(X(-140), Y(SH), X(-140), Y(z0.ez), '225', [-18, 4]);
     h += dimLine(X(0), Y(z0.ez + 40), X(z0.wx), Y(z0.ez + 40), '160', [0, -6]);
-    h += '<text class="t-ink" x="' + (X(z0.wx) + 8) + '" y="' + (Y(z0.wz - 50) + 4) + '">pusher tip ' + f(z0.pz, 0) + ' mm up</text>';
+    h += '<text class="t-ink" x="' + (X(z0.wx) + 8) + '" y="' + (Y(z0.wz - 90) + 4) + '">pusher tip ' + f(z0.pz, 0) + ' mm up</text>';
     h += '<text class="t-ink" x="' + (X(z0.wx + 83) + 6) + '" y="' + (Y(z0.wz) + 4) + '">' + f(z0.wz, 0) + ' mm up</text>';
     $('pAll').innerHTML = h;
   }
@@ -857,16 +867,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await moveTo([cur[0] - (cur[0] > 0 ? 25 : -25), 0, 15], 1500, id);
     await sleep(HOLD / 2, id);
   }
-  // Point E: the press pose from the maths; the hover is the same pose with the second arm tilted up
-  function eHover2(prs) { var h = prs.slice(); h[2] = Math.min(prs[2] + PRESS_LIFT, MAX[2]); return h; }
+
   // Same as setTipHeight(): lean only the main arm until the pusher tip is at height want
   function setTipHeight(p, want) {
     var lo = MIN[1], hi = MAX[1];
     for (var it = 0; it < 30; it++) { p[1] = (lo + hi) / 2; if (toolPt(p, TOOLS.PUSH).z > want) lo = p[1]; else hi = p[1]; }
     return p;
   }
-  // Point E: the press pose from the maths, the hover is the same pose with the main arm leaned back
-  function eHover(prs) { return setTipHeight(prs.slice(), ST.EH.z + ST.EH.s); }
+
   async function goToStation(st, id) {
     var p = stationPose(st);
     setTarget(st);
@@ -998,10 +1006,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     // Task 4
     await runTask(4, async function () {
       log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
-      var prs = stationPose(ST.EP), hov = eHover2(prs), ramp = PRESS_MOVE;
-      setTarget(ST.EH, 'E button');
+      var prs = stationPose(ST.EP), hov = stationPose(ST.EH), ramp = PRESS_MOVE;
+      setTarget(ST.E, 'E button');
       await goToPose(hov, 'E hover', id);
-      log('Each press tilts the second arm ' + f(hov[2] - prs[2]) + ' degrees down and back up: the pusher drops ' + f(toolPt(hov, TOOLS.PUSH).z - toolPt(prs, TOOLS.PUSH).z, 0) + ' mm onto the button.');
+      log('Each press pushes the pusher tip ' + (PRESS_TRAVEL + PRESS_DEPTH) + " mm along the button's axis (tilted " + BTN_TILT + ' degrees from upright), ending ' + PRESS_DEPTH + ' mm into the button.');
       log('Sending the word ' + word + ' in Morse code on the button.');
       for (var i = 0; i < word.length; i++) {
         var code = MORSE[word[i]], txt = '   Letter ' + word[i] + ':';
@@ -1125,10 +1133,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
       await goToStation(k, id); await sleep(1000, id);
     }
-    var prs = stationPose(ST.EP), hov = eHover2(prs), rp;
-    setTarget(ST.EH, 'E button');
+    var prs = stationPose(ST.EP), hov = stationPose(ST.EH), rp;
+    setTarget(ST.E, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('Each press tilts the second arm ' + f(hov[2] - prs[2]) + ' degrees down onto the button and back up.');
+    log("Each press pushes the pusher tip straight along the button's axis, into the button and back out.");
     log('Short press on the button (600 ms, a Morse dot).'); setLive('morse', 'short press');
     btnOn = true; rp = await moveTo(prs, 300, id, PRESS_SPEED); await sleep(Math.max(0, 600 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, 300, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
     log('Long press on the button (1800 ms, a Morse dash).'); setLive('morse', 'long press');

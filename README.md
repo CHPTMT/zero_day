@@ -20,7 +20,7 @@ Each sketch sits in a folder with the same name, which the Arduino IDE requires.
 
 ## Arm
 
-Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm above the table (20 mm platform plus 110 mm to the pivot). The sensor array runs along the axis of the second arm, measured from its end: ultrasonic at the centre; sound sensor 42 mm further out and 45 mm to the left; colour sensor 83 mm out (the tip) and 45 mm to the right (left and right as seen facing the machine from the front). A 30 mm button pusher hangs under the 40 mm second arm at its end, square to it, pointing straight down when the arm is level; its tip is 50 mm below the arm's centre line. At 30 mm it presses Point E within 2 degrees of straight down. Side-face widths: main arm 50 mm, second arm 40 mm. Joint angles are relative, 0 at the zero pose:
+Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm above the table (20 mm platform plus 110 mm to the pivot). The sensor array runs along the axis of the second arm, measured from its end: ultrasonic at the centre; sound sensor 42 mm further out and 45 mm to the left; colour sensor 83 mm out (the tip) and 45 mm to the right (left and right as seen facing the machine from the front). A 70 mm button pusher hangs under the 40 mm second arm at its end, square to it; its tip is 90 mm below the arm's centre line. Side-face widths: main arm 50 mm, second arm 40 mm. Joint angles are relative, 0 at the zero pose:
 
 | Joint | Zero | Range |
 |---|---|---|
@@ -28,7 +28,7 @@ Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm ab
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
 | Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
 
-The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A, 70 mm from B and 60 mm from the volume indicator, colour sensor 15 mm from the paper at C, sound sensor 40 mm from D, at E the second arm tilts 18 degrees for each press, the pusher dropping 52 mm to 8 mm into the button.
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A, 70 mm from B and 60 mm from the volume indicator, colour sensor 15 mm from the blue face at C, sound sensor 40 mm from D. At E the breadboard sits on the stand's sloping top, so each press moves the pusher tip in a straight line along the button's own axis, from 44 mm off it to 8 mm in (`E_STAND_ANGLE_DEG`, `BUTTON_TILT_DEG`).
 
 ## Stations (theta deg, R mm, Z mm)
 
