@@ -1,5 +1,5 @@
 /*
- * TEST: one servo on its own (Group 21 arm)
+ * TEST: one servo on its own (Group 31 arm)
  *
  * Moves a single servo slowly between two angles, forever, and prints
  * what it is doing. Nothing else runs, so if this servo does not move

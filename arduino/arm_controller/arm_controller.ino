@@ -1,5 +1,5 @@
 /*
- * MECN3066A Mechatronics II, Group 21
+ * MECN3066A Mechatronics II, Group 31
  * Recycled robotic arm: full demonstration (Arduino Uno R3)
  *
  * Sequence (state machine, fully autonomous after reset):
@@ -1175,10 +1175,10 @@ void setup() {
   sElbow.attach(PIN_ELBOW);
   writePose(ZERO_POSE);
 
-  Serial.println(F("\nGroup 21 robotic arm: demonstration program starting."));
+  Serial.println(F("\nGroup 31 robotic arm: demonstration program starting."));
   if (lcd.begin()) {
     Serial.print(F("LCD monitor: found at 0x")); Serial.print(lcd.addr, HEX); Serial.println('.');
-    lcdShow(F("Group 21 arm")); lcd.print(F("Starting..."));
+    lcdShow(F("Group 31 arm")); lcd.print(F("Starting..."));
   } else {
     Serial.println(F("LCD monitor: NOT FOUND. Check SDA (A2), SCL (A3), 5 V and GND. The run carries on without it."));
   }

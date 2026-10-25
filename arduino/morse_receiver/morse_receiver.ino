@@ -1,5 +1,5 @@
 /*
- * MECN3066A Mechatronics II, Group 21
+ * MECN3066A Mechatronics II, Group 31
  * Point E Morse receiver (second, standalone Arduino Uno)
  *
  * Rule R2: this board, its push button and its LCD are completely separate

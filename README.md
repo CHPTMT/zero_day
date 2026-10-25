@@ -1,4 +1,4 @@
-# zero_day: MECN3066A Recycled Robotic Arm (Group 21)
+# zero_day: MECN3066A Recycled Robotic Arm (Group 31)
 
 Arduino code for the Mechatronics II robotic arm project. The arm runs on an Arduino Uno with SG90 servos, an HC-SR04 ultrasonic sensor, a TCS34725 colour sensor and an analogue sound sensor. A second Uno decodes the Morse code button presses at Point E and shows the word on an LCD.
 

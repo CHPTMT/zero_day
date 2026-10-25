@@ -1,5 +1,5 @@
 /*
- * TEST: all servos (Group 21 arm)
+ * TEST: all servos (Group 31 arm)
  *
  * 1. Moves every joint to relative 0 and holds for 5 s:
  *      base facing forward, main arm upright, second arm level.

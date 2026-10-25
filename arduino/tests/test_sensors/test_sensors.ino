@@ -1,5 +1,5 @@
 /*
- * TEST: all sensors at once (Group 21 arm). Servos are not moved.
+ * TEST: all sensors at once (Group 31 arm). Servos are not moved.
  *
  * Every half second prints one line:
  *   distance (cm) and present / empty | colour raw, normalised, class,

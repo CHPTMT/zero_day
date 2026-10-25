@@ -1,5 +1,5 @@
 /*
- * CAPTURE POINTS (Group 21 arm)
+ * CAPTURE POINTS (Group 31 arm)
  *
  * Takes the arm to every point of the demonstration exactly as arm_controller
  * does, then lets you nudge it onto the real stand from the Serial Monitor.

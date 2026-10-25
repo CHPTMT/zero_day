@@ -1,4 +1,4 @@
-<title>Group 21 Arm Bench</title>
+<title>Group 31 Arm Bench</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
@@ -164,7 +164,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 <div class="wrap">
   <div class="top">
     <div>
-      <div class="eyebrow">MECN3066A Group 21 / Robotic arm</div>
+      <div class="eyebrow">MECN3066A Group 31 / Robotic arm</div>
       <h1>Arm bench</h1>
       <p class="lede">Runs the same joint maths and task sequence as arm_controller.ino, with the arm drawn to scale. Drive the joints by hand, send it to a station, or play the whole demonstration and read the serial output it would print.</p>
     </div>
@@ -925,7 +925,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   async function demo(id) {
     var obj = $('cObj').value, col = $('cCol').value, tap = +$('cTap').value, word = $('cWord').value;
     leds = { R: false, G: false, B: false };
-    log('Group 21 robotic arm: demonstration program starting.', 'h');
+    log('Group 31 robotic arm: demonstration program starting.', 'h');
     log('Colour sensor: connected.');
     for (var lc of ['R', 'G', 'B']) {
       log('LED check: only ' + nameOf(lc) + ' should be lit now (' + { R: 'D8', G: 'D9', B: 'D10' }[lc] + ').');
@@ -1419,7 +1419,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   drawBB();
   drawParts();
   render();
-  log('Group 21 robotic arm: demonstration program starting.', 'h');
+  log('Group 31 robotic arm: demonstration program starting.', 'h');
   posLine('zero');
   log('Pick a sketch and press "Run sketch" to watch what it does to the arm.', 'd');
 })();

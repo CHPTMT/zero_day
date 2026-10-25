@@ -1,5 +1,5 @@
 /*
- * TEST: combined movements (Group 21 arm)
+ * TEST: combined movements (Group 31 arm)
  *
  * Runs every movement of the demonstration without making any decisions,
  * and prints the joint angles, the calculated sensor position and every
