@@ -96,7 +96,7 @@ const int8_t ELBOW_DIR = 1;
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
 const float REL_MAX[NJ] = { 90,  50,  45};
-const char *JOINT_NAMES[NJ] = {"base", "main", "2nd"};
+const char *JOINT_NAMES[NJ] = {"base", "main arm", "second arm"};
 
 // ======================================================================
 // ARM DIMENSIONS (mm)
@@ -152,12 +152,12 @@ struct Station {
   const Tool *tool;
 };
 
-Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};      // 10 cm from the plate
-Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
-Station ST_C       = {"C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
-Station ST_D       = {"D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
-Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};  // 15 mm off the button
-Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
+Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};      // 10 cm from the plate
+Station ST_B       = {"Point B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
+Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
+Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
+Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};  // 15 mm off the button
+Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
 // IND_Z_HIGH (loud) at theta 110, R 275.
@@ -354,48 +354,61 @@ bool pressAtLimit(const Station &s, Pose &out) {
     toolPoint(out, *s.tool, th, r, z);
     if (z > wantZ) lo = out.a[J_MAIN]; else hi = out.a[J_MAIN];
   }
-  Serial.print(F("[ik] ")); Serial.print(s.name);
-  Serial.print(F(": 2nd arm held at its limit, pusher tip ")); Serial.print(s.r - r, 0);
-  Serial.println(F(" mm short of the button centre"));
+  Serial.print(F("Note: ")); Serial.print(s.name);
+  Serial.print(F(" needs the second arm past its limit, so it is held at the limit. The pusher will land "));
+  Serial.print(s.r - r, 0); Serial.println(F(" mm short of the button centre."));
   return true;
 }
 
 // Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
   if (!toolIK(s, out)) {
-    Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
+    Serial.print(F("WARNING: ")); Serial.print(s.name); Serial.println(F(" is out of the arm's reach. Skipping this move."));
     return false;
   }
   if (s.tool->pressDown && out.a[J_ELBOW] > REL_MAX[J_ELBOW]) pressAtLimit(s, out);
   for (uint8_t j = 0; j < NJ; j++) {
     out.a[j] += s.trim[j];
     if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) {
-      Serial.print(F("[ik] ")); Serial.print(s.name); Serial.print(F(" ")); Serial.print(JOINT_NAMES[j]);
-      Serial.print(F(" limit, wanted ")); Serial.println(out.a[j]);
+      Serial.print(F("WARNING: ")); Serial.print(s.name); Serial.print(F(" needs the ")); Serial.print(JOINT_NAMES[j]);
+      Serial.print(F(" at ")); Serial.print(out.a[j], 1); Serial.println(F(" degrees, past its limit. Using the limit instead."));
       out.a[j] = constrain(out.a[j], REL_MIN[j], REL_MAX[j]);
     }
   }
   return true;
 }
 
-void printTool(const Tool &t) {
-  float th, r, z;
-  toolPoint(cur, t, th, r, z);
-  Serial.print(F("  ")); Serial.print(t.name);
-  Serial.print(F(" (")); Serial.print(th, 0);
-  Serial.print(F(", ")); Serial.print(r, 0);
-  Serial.print(F(", ")); Serial.print(z, 0); Serial.print(')');
+// One joint in words, e.g. "turned 80.0 degrees left" or "facing forward".
+void printJoint(float v, const __FlashStringHelper *verb, const __FlashStringHelper *plus,
+                const __FlashStringHelper *minus, const __FlashStringHelper *atZero) {
+  if (fabs(v) < 0.5) { Serial.print(atZero); return; }
+  Serial.print(verb); Serial.print(' '); Serial.print(fabs(v), 1);
+  Serial.print(F(" degrees ")); Serial.print(v > 0 ? plus : minus);
 }
 
-// Joint angles, then where every tool is as (theta, r, z).
+// Where one sensor is: how far out from the base and how high above the table.
+void printTool(const __FlashStringHelper *name, const Tool &t) {
+  float th, r, z;
+  toolPoint(cur, t, th, r, z);
+  Serial.print(name); Serial.print(' '); Serial.print(r, 0);
+  Serial.print(F(" mm out and ")); Serial.print(z, 0); Serial.print(F(" mm up"));
+}
+
+// Plain description of the arm after a move: each joint, then each sensor.
 void printPosition(const char *label) {
-  Serial.print(F("[pos] ")); Serial.print(label);
-  Serial.print(F("  base ")); Serial.print(cur.a[J_BASE], 1);
-  Serial.print(F("  main ")); Serial.print(cur.a[J_MAIN], 1);
-  Serial.print(F("  2nd ")); Serial.println(cur.a[J_ELBOW], 1);
-  Serial.print(F("     "));
-  printTool(TOOL_US); printTool(TOOL_RGB); printTool(TOOL_SOUND); printTool(TOOL_PUSHER);
-  Serial.println();
+  Serial.print(F("Arrived at ")); Serial.print(label); Serial.print(F(". Base "));
+  printJoint(cur.a[J_BASE], F("turned"), F("left"), F("right"), F("facing forward"));
+  Serial.print(F(", main arm "));
+  printJoint(cur.a[J_MAIN], F("leaning"), F("forward"), F("back"), F("upright"));
+  Serial.print(F(", second arm "));
+  printJoint(cur.a[J_ELBOW], F("tilted"), F("up"), F("down"), F("level"));
+  Serial.println('.');
+  Serial.print(F("   Sensors: "));
+  printTool(F("ultrasonic"), TOOL_US);   Serial.print(F("; "));
+  printTool(F("colour"), TOOL_RGB);      Serial.print(F("; "));
+  printTool(F("sound"), TOOL_SOUND);     Serial.print(F("; "));
+  printTool(F("pusher tip"), TOOL_PUSHER);
+  Serial.println('.');
 }
 
 // Lift, swing the base, then settle onto the pose.
@@ -422,7 +435,7 @@ void goToStation(const Station &s) {
 // GESTURES
 // ======================================================================
 void gestureYes() {   // vertical: second arm up and down
-  Serial.println(F("[gesture] YES (up / down)"));
+  Serial.println(F("Gesture: nodding YES (second arm up and down)."));
   float c = cur.a[J_ELBOW];
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
     moveJoint(J_ELBOW, c + GESTURE_DEG, GESTURE_STEP_MS);
@@ -432,7 +445,7 @@ void gestureYes() {   // vertical: second arm up and down
 }
 
 void gestureNo() {    // horizontal: base left and right
-  Serial.println(F("[gesture] NO (left / right)"));
+  Serial.println(F("Gesture: shaking NO (base left and right)."));
   float c = cur.a[J_BASE];
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
     moveJoint(J_BASE, c + GESTURE_DEG, GESTURE_STEP_MS);
@@ -442,7 +455,7 @@ void gestureNo() {    // horizontal: base left and right
 }
 
 void gestureBox() {   // square traced with base and second arm
-  Serial.println(F("[gesture] BOX"));
+  Serial.println(F("Gesture: drawing a BOX, because there was no object at A or B."));
   float cb = cur.a[J_BASE], ce = cur.a[J_ELBOW];
   const int8_t k[5][2] = {{-1, 1}, {1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
   for (uint8_t i = 0; i < 5; i++) {
@@ -518,14 +531,15 @@ const __FlashStringHelper *colourName(char c);
 void printColourExtras(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   uint16_t temp = tcs.calculateColorTemperature_dn40(r, g, b, c);
   uint16_t lux = tcs.calculateLux(r, g, b);
-  Serial.print(F("[colour] temp ")); Serial.print(temp);
-  Serial.print(F(" K  lux ")); Serial.print(lux);
-  Serial.print(F("  primary ")); Serial.println(colourName(primaryColour(r, g, b)));
+  Serial.print(F("Colour temperature ")); Serial.print(temp);
+  Serial.print(F(" K, light level ")); Serial.print(lux);
+  Serial.print(F(" lux, strongest colour channel: ")); Serial.print(colourName(primaryColour(r, g, b)));
+  Serial.println('.');
 }
 
 // Always returns R, G or B, so an LED is always lit.
 char readColour() {
-  if (!tcsOk) { Serial.println(F("[colour] sensor missing, default R")); return 'R'; }
+  if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so the red LED is used by default.")); return 'R'; }
   uint32_t r = 0, g = 0, b = 0, c = 0;
   for (uint8_t i = 0; i < COLOUR_SAMPLES; i++) {
     uint16_t rr, gg, bb, cc;
@@ -534,18 +548,19 @@ char readColour() {
   }
   r /= COLOUR_SAMPLES; g /= COLOUR_SAMPLES; b /= COLOUR_SAMPLES; c /= COLOUR_SAMPLES;
   float sum = r + g + b;
-  Serial.print(F("[colour] raw r ")); Serial.print(r);
-  Serial.print(F(" g ")); Serial.print(g);
-  Serial.print(F(" b ")); Serial.print(b);
-  Serial.print(F(" clear ")); Serial.println(c);
+  Serial.print(F("Colour sensor readings: red ")); Serial.print(r);
+  Serial.print(F(", green ")); Serial.print(g);
+  Serial.print(F(", blue ")); Serial.print(b);
+  Serial.print(F(", overall brightness ")); Serial.print(c); Serial.println('.');
   printColourExtras(r, g, b, c);
   if (c < COLOUR_MIN_CLEAR || sum == 0) {
-    Serial.println(F("[colour] weak reading, using strongest channel"));
+    Serial.println(F("The reading is too dark to trust, so the strongest channel decides the colour."));
     return primaryColour(r, g, b);
   }
   float n[3] = {r / sum, g / sum, b / sum};
-  Serial.print(F("[colour] normalised ")); Serial.print(n[0], 3); Serial.print(' ');
-  Serial.print(n[1], 3); Serial.print(' '); Serial.println(n[2], 3);
+  Serial.print(F("Share of each colour: red ")); Serial.print((int)(n[0] * 100));
+  Serial.print(F("%, green ")); Serial.print((int)(n[1] * 100));
+  Serial.print(F("%, blue ")); Serial.print((int)(n[2] * 100)); Serial.println(F("%."));
   float dr = dist2(n, REF_RED), dg = dist2(n, REF_GREEN), db = dist2(n, REF_BLUE);
   if (dr <= dg && dr <= db) return 'R';
   return dg <= db ? 'G' : 'B';
@@ -614,13 +629,13 @@ void pressFor(uint16_t ms) {
 }
 
 void sendMorseWord(const char *word) {
-  Serial.print(F("[morse] word ")); Serial.println(word);
+  Serial.print(F("Sending the word ")); Serial.print(word); Serial.println(F(" in Morse code on the button."));
   for (uint8_t i = 0; word[i]; i++) {
     const char *code = morseFor(word[i]);
     if (!code) continue;
-    Serial.print(F("[morse] ")); Serial.print(word[i]); Serial.print(F("  "));
+    Serial.print(F("   Letter ")); Serial.print(word[i]); Serial.print(F(":"));
     for (uint8_t k = 0; code[k]; k++) {
-      Serial.print(code[k] == '.' ? F("dot ") : F("DASH "));
+      Serial.print(code[k] == '.' ? F(" short press") : F(" long press"));
       pressFor(code[k] == '.' ? MORSE_UNIT_MS : 3 * MORSE_UNIT_MS);
       if (code[k + 1]) delay(MORSE_UNIT_MS);
     }
@@ -628,7 +643,7 @@ void sendMorseWord(const char *word) {
     if (word[i + 1]) delay(3 * MORSE_UNIT_MS);
   }
   delay(8 * MORSE_UNIT_MS);   // receiver ends the word after the silence
-  Serial.print(F("[morse] sent ")); Serial.println(word);
+  Serial.print(F("Finished sending ")); Serial.print(word); Serial.println(F(". The receiver should now show it on its screen."));
 }
 
 // ======================================================================
@@ -648,11 +663,11 @@ void loadWord() {
 // Hold the zero pose for ZERO_HOLD_MS. Any 3 letter word typed in that
 // time becomes the target word.
 void holdZeroAndReadWord() {
-  Serial.print(F("[zero] holding all joints at 0 for "));
+  Serial.print(F("Holding the rest position for "));
   Serial.print(ZERO_HOLD_MS / 1000);
-  Serial.println(F(" s"));
-  Serial.print(F("[word] current word ")); Serial.print(targetWord);
-  Serial.println(F(". Type a new 3 letter word now to change it."));
+  Serial.println(F(" seconds: base facing forward, main arm upright, second arm level."));
+  Serial.print(F("The Morse word for Point E is ")); Serial.print(targetWord);
+  Serial.println(F(". To change it, type a new 3-letter word now and press Enter."));
   char buf[8];
   uint8_t n = 0;
   unsigned long start = millis();
@@ -664,7 +679,7 @@ void holdZeroAndReadWord() {
       if (n == 3 && validWord(buf)) {
         strcpy(targetWord, buf);
         for (uint8_t i = 0; i < 3; i++) EEPROM.update(i, targetWord[i]);
-        Serial.print(F("[word] saved ")); Serial.println(targetWord);
+        Serial.print(F("New word saved: ")); Serial.print(targetWord); Serial.println('.');
       }
       n = 0;
     } else if (n < 7) {
@@ -676,37 +691,44 @@ void holdZeroAndReadWord() {
 // ======================================================================
 // TASKS
 // ======================================================================
+// e.g. "Point A: object found, 10.2 cm away." or "Point B: nothing there (no echo)."
+void printDistance(const __FlashStringHelper *where, float d, bool found) {
+  Serial.print(where);
+  if (found) { Serial.print(F(": object found, ")); Serial.print(d, 1); Serial.println(F(" cm away.")); }
+  else if (d < 0) Serial.println(F(": nothing there (no echo came back)."));
+  else { Serial.print(F(": nothing there (nearest echo ")); Serial.print(d, 1); Serial.println(F(" cm, beyond the limit).")); }
+}
+
 void task1() {
-  Serial.println(F("\n=== TASK 1: Points A and B (ultrasonic) ==="));
+  Serial.println(F("\nTASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor."));
   goToStation(ST_A);
   distA = readDistanceCm();
   resultA = objectPresent(distA);
-  Serial.print(F("[A] distance ")); Serial.print(distA, 1);
-  Serial.println(resultA ? F(" cm -> OBJECT") : F(" cm -> empty"));
+  printDistance(F("Point A"), distA, resultA);
   if (resultA) gestureYes();
 
   goToStation(ST_B);
   distB = readDistanceCm();
   resultB = objectPresent(distB);
-  Serial.print(F("[B] distance ")); Serial.print(distB, 1);
-  Serial.println(resultB ? F(" cm -> OBJECT") : F(" cm -> empty"));
+  printDistance(F("Point B"), distB, resultB);
   if (resultB) gestureNo();
 
   if (!resultA && !resultB) gestureBox();
 }
 
 void task2() {
-  Serial.println(F("\n=== TASK 2: Point C (colour) ==="));
+  Serial.println(F("\nTASK 2 of 4: reading the colour of the paper at Point C."));
   goToStation(ST_C);
   resultColour = readColour();
-  Serial.print(F("[C] colour -> ")); Serial.println(colourName(resultColour));
+  Serial.print(F("Point C: the paper is ")); Serial.print(colourName(resultColour));
+  Serial.print(F(". Switching on the ")); Serial.print(colourName(resultColour)); Serial.println(F(" LED."));
   setColourLed(resultColour);   // stays lit to the end of the run
 }
 
 void task3() {
-  Serial.println(F("\n=== TASK 3: Point D (sound) ==="));
+  Serial.println(F("\nTASK 3 of 4: measuring a tap at Point D and showing its loudness on the indicator."));
   goToStation(ST_D);
-  Serial.println(F("[D] listening for a tap (3 s)"));
+  Serial.println(F("Listening for a tap (up to 3 seconds)..."));
   digitalWrite(PIN_STATUS, HIGH);
   resultSound = captureSound();
   digitalWrite(PIN_STATUS, LOW);
@@ -717,47 +739,49 @@ void task3() {
     f = constrain(f, 0.0, 1.0);
   }
   resultLevel = (int)(f * 100);
-  Serial.print(F("[D] amplitude ")); Serial.print(resultSound);
-  Serial.print(F(" -> level ")); Serial.print(resultLevel); Serial.println('%');
+  if (resultSound < 0) Serial.println(F("No tap heard in 3 seconds. Pointing at the bottom of the scale."));
+  else {
+    Serial.print(F("Heard a tap: loudness ")); Serial.print(resultSound);
+    Serial.print(F(" out of 1023, which is ")); Serial.print(resultLevel); Serial.println(F("% of the scale."));
+  }
 
   float zPoint = IND_Z_LOW + f * (IND_Z_HIGH - IND_Z_LOW);
-  Station ind = {"indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {0, 0, 0}, &TOOL_US};
+  Station ind = {"the volume indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {0, 0, 0}, &TOOL_US};
   Pose p;
   if (stationPose(ind, p)) {
     moveTo(p, MOVE_MS);   // indicator is next to D, no travel lift needed
-    printPosition("indicator");
+    printPosition("the volume indicator");
   }
-  Serial.print(F("[D] pointing at height ")); Serial.print(zPoint, 0); Serial.println(F(" mm"));
+  Serial.print(F("Pointing at the indicator ")); Serial.print(zPoint, 0); Serial.println(F(" mm above the table."));
   delay(SOUND_HOLD_MS);
 }
 
 void task4() {
-  Serial.println(F("\n=== TASK 4: Point E (Morse) ==="));
+  Serial.println(F("\nTASK 4 of 4: pressing the word in Morse code on the button at Point E."));
   if (!stationPose(ST_E_HOVER, hoverPose) || !stationPose(ST_E_PRESS, pressPose)) {
-    Serial.println(F("[E] cannot reach, skipping"));
+    Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
   }
-  goToPose(hoverPose, "E hover");
+  goToPose(hoverPose, "Point E (above the button)");
   sendMorseWord(targetWord);
 }
 
 void printSummary() {
-  Serial.println(F("\n=========== RUN SUMMARY ==========="));
-  Serial.print(F("A: ")); Serial.print(resultA ? F("object") : F("empty"));
-  Serial.print(F(" (")); Serial.print(distA, 1); Serial.println(F(" cm)"));
-  Serial.print(F("B: ")); Serial.print(resultB ? F("object") : F("empty"));
-  Serial.print(F(" (")); Serial.print(distB, 1); Serial.println(F(" cm)"));
-  Serial.print(F("Gesture: "));
-  if (resultA && resultB) Serial.println(F("YES then NO"));
-  else if (resultA) Serial.println(F("YES"));
-  else if (resultB) Serial.println(F("NO"));
-  else Serial.println(F("BOX"));
-  Serial.print(F("C colour: ")); Serial.println(colourName(resultColour));
-  Serial.print(F("D sound: amplitude ")); Serial.print(resultSound);
-  Serial.print(F(", level ")); Serial.print(resultLevel); Serial.println('%');
-  Serial.print(F("E word: ")); Serial.println(targetWord);
-  Serial.println(F("===================================="));
-  Serial.println(F("Press reset to run again."));
+  Serial.println(F("\n========== RUN SUMMARY =========="));
+  printDistance(F("Point A"), distA, resultA);
+  printDistance(F("Point B"), distB, resultB);
+  Serial.print(F("Gesture made: "));
+  if (resultA && resultB) Serial.println(F("YES, then NO."));
+  else if (resultA) Serial.println(F("YES."));
+  else if (resultB) Serial.println(F("NO."));
+  else Serial.println(F("BOX."));
+  Serial.print(F("Point C colour: ")); Serial.print(colourName(resultColour)); Serial.println('.');
+  Serial.print(F("Point D tap: "));
+  if (resultSound < 0) Serial.println(F("none heard."));
+  else { Serial.print(F("loudness ")); Serial.print(resultSound); Serial.print(F(", ")); Serial.print(resultLevel); Serial.println(F("% of the scale.")); }
+  Serial.print(F("Point E word sent: ")); Serial.print(targetWord); Serial.println('.');
+  Serial.println(F("================================="));
+  Serial.println(F("Run finished. Press the reset button on the Uno to run again."));
 }
 
 // ======================================================================
@@ -781,20 +805,21 @@ void setup() {
   sElbow.attach(PIN_ELBOW);
   writePose(ZERO_POSE);
 
-  Serial.println(F("\nGroup 21 robotic arm, demonstration"));
+  Serial.println(F("\nGroup 21 robotic arm: demonstration program starting."));
   tcsOk = tcs.begin();
-  Serial.println(tcsOk ? F("[init] colour sensor found") : F("[init] colour sensor NOT found, Task 2 will default"));
+  Serial.println(tcsOk ? F("Colour sensor: connected.")
+                       : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires. Point C will light red by default."));
 
   loadWord();
-  printPosition("zero");
+  printPosition("the rest position");
   holdZeroAndReadWord();
-  Serial.print(F("[word] target word ")); Serial.println(targetWord);
+  Serial.print(F("Using the Morse word ")); Serial.print(targetWord); Serial.println('.');
 }
 
 void loop() {
   switch (state) {
     case ST_START:
-      Serial.println(F("\n=== RUN START ==="));
+      Serial.println(F("\n---------- Starting the run ----------"));
       state = ST_TASK1;
       break;
     case ST_TASK1:
@@ -814,7 +839,7 @@ void loop() {
       state = ST_FINISH;
       break;
     case ST_FINISH:
-      goToPose(ZERO_POSE, "zero");
+      goToPose(ZERO_POSE, "the rest position");
       printSummary();
       state = ST_IDLE;
       break;

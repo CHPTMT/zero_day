@@ -446,16 +446,27 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       p[1] = (lo + hi) / 2; q = toolPt(p, st.tool);
       if (q.z > want) lo = p[1]; else hi = p[1];
     }
-    log('[ik] ' + st.name + ': 2nd arm held at its limit, pusher tip ' + f(st.r - q.r, 0) + ' mm short of the button centre');
+    log('Note: ' + place(st.name) + ' needs the second arm past its limit, so it is held at the limit. The pusher will land ' + f(st.r - q.r, 0) + ' mm short of the button centre.');
+  }
+
+  // Plain names for places, matching the sketches' Serial Monitor text
+  var PLACE = { 'A': 'Point A', 'B': 'Point B', 'C': 'Point C', 'D': 'Point D',
+    'E hover': 'Point E (above the button)', 'E press': 'Point E (pressing)', 'indicator': 'the volume indicator',
+    'ind low': 'the volume indicator (quiet end)', 'ind mid': 'the volume indicator (middle)', 'ind high': 'the volume indicator (loud end)',
+    'zero': 'the rest position', 'manual': 'the position you set' };
+  function place(n) { return PLACE[n] || n; }
+  function joint(v, verb, plus, minus, atZero) { return Math.abs(v) < 0.5 ? atZero : verb + ' ' + f(Math.abs(v)) + ' degrees ' + (v > 0 ? plus : minus); }
+  function distLine(where, d, found) {
+    return where + (found ? ': object found, ' + f(d) + ' cm away.' : d < 0 ? ': nothing there (no echo came back).' : ': nothing there (nearest echo ' + f(d) + ' cm, beyond the limit).');
   }
 
   function stationPose(st) {
     var p = toolIK(st);
-    if (!p) { log('[ik] ' + st.name + ' OUT OF REACH'); return null; }
+    if (!p) { log('WARNING: ' + place(st.name) + " is out of the arm's reach. Skipping this move."); return null; }
     if (st.tool && st.tool.press && p[2] > MAX[2]) pressAtLimit(st, p);
     for (var j = 0; j < 3; j++) {
       if (p[j] < MIN[j] || p[j] > MAX[j]) {
-        log('[ik] ' + st.name + ' ' + ['base', 'main', '2nd'][j] + ' limit, wanted ' + f(p[j], 2));
+        log('WARNING: ' + place(st.name) + ' needs the ' + ['base', 'main arm', 'second arm'][j] + ' at ' + f(p[j]) + ' degrees, past its limit. Using the limit instead.');
         p[j] = clamp(p[j], MIN[j], MAX[j]);
       }
     }
@@ -792,8 +803,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   function posLine(label) {
     var k = fk(cur);
     function t(n, q) { return '  ' + n + ' (' + f(q.theta, 0) + ', ' + f(q.r, 0) + ', ' + f(q.z, 0) + ')'; }
-    log('[pos] ' + label + '  base ' + f(cur[0]) + '  main ' + f(cur[1]) + '  2nd ' + f(cur[2]));
-    log('     ' + t('ultrasonic', k.us) + t('colour', k.rgb) + t('sound', k.snd) + t('pusher', k.pu));
+    log('Arrived at ' + place(label) + '. Base ' + joint(cur[0], 'turned', 'left', 'right', 'facing forward') +
+        ', main arm ' + joint(cur[1], 'leaning', 'forward', 'back', 'upright') + ', second arm ' + joint(cur[2], 'tilted', 'up', 'down', 'level') + '.');
+    function u(n, q) { return n + ' ' + f(q.r, 0) + ' mm out and ' + f(q.z, 0) + ' mm up'; }
+    log('   Sensors: ' + u('ultrasonic', k.us) + '; ' + u('colour', k.rgb) + '; ' + u('sound', k.snd) + '; ' + u('pusher tip', k.pu) + '.');
   }
 
 
@@ -841,7 +854,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     return p;
   }
   async function nod(j, name, id) {
-    log('[gesture] ' + name);
+    log('Gesture: ' + name);
     var c = cur[j];
     for (var i = 0; i < GEST_REPS; i++) {
       var a = cur.slice(); a[j] = c + GEST; await moveTo(a, GEST_MS, id);
@@ -849,8 +862,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     }
     var b = cur.slice(); b[j] = c; await moveTo(b, GEST_MS, id);
   }
+  var boxWhy = false;
   async function box(id) {
-    log('[gesture] BOX');
+    log(boxWhy ? 'Gesture: drawing a BOX, because there was no object at A or B.' : 'Gesture: drawing a BOX.');
     var cb = cur[0], ce = cur[2], k = [[-1, 1], [1, 1], [1, -1], [-1, -1], [-1, 1]];
     for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cur[1], ce + k[i][1] * GEST], GEST_MS * 2, id);
     await moveTo([cb, cur[1], ce], GEST_MS * 2, id);
@@ -866,70 +880,70 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   async function demo(id) {
     var obj = $('cObj').value, col = $('cCol').value, tap = +$('cTap').value, word = $('cWord').value;
     leds = { R: false, G: false, B: false };
-    log('Group 21 robotic arm, demonstration', 'h');
-    log('[init] colour sensor found');
+    log('Group 21 robotic arm: demonstration program starting.', 'h');
+    log('Colour sensor: connected.');
     await moveTo(ZERO, 600, id);
     setTarget(null);
     posLine('zero');
-    log('[zero] holding all joints at 0 for 5 s');
-    log('[word] current word ' + word + '. Type a new 3 letter word now to change it.');
+    log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
+    log('The Morse word for Point E is ' + word + '. To change it, type a new 3-letter word now and press Enter.');
     await sleep(5000, id);
-    log('[word] target word ' + word);
+    log('Using the Morse word ' + word + '.');
     log('');
-    log('=== RUN START ===', 'h');
+    log('---------- Starting the run ----------', 'h');
 
     // Task 1
-    log(''); log('=== TASK 1: Points A and B (ultrasonic) ===', 'h');
+    log(''); log('TASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor.', 'h');
     await goToStation(ST.A, id);
     var dA = distAt(obj === 'A' || obj === 'AB'), rA = dA >= 2 && dA <= US_MAX;
-    log('[A] distance ' + f(dA) + (rA ? ' cm -> OBJECT' : ' cm -> empty'));
+    log(distLine('Point A', dA, rA));
     setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
-    if (rA) await nod(2, 'YES (up / down)', id);
+    if (rA) await nod(2, 'nodding YES (second arm up and down).', id);
     await goToStation(ST.B, id);
     var dB = distAt(obj === 'B' || obj === 'AB'), rB = dB >= 2 && dB <= US_MAX;
-    log('[B] distance ' + f(dB) + (rB ? ' cm -> OBJECT' : ' cm -> empty'));
+    log(distLine('Point B', dB, rB));
     setLive('dist', 'B ' + (dB < 0 ? 'no echo' : f(dB) + ' cm') + (rB ? ' object' : ' empty'));
-    if (rB) await nod(0, 'NO (left / right)', id);
-    if (!rA && !rB) await box(id);
+    if (rB) await nod(0, 'shaking NO (base left and right).', id);
+    if (!rA && !rB) { boxWhy = true; await box(id); boxWhy = false; }
 
     // Task 2
-    log(''); log('=== TASK 2: Point C (colour) ===', 'h');
+    log(''); log('TASK 2 of 4: reading the colour of the paper at Point C.', 'h');
     await goToStation(ST.C, id);
     var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
-    log('[colour] raw r ' + pr[0] + ' g ' + pr[1] + ' b ' + pr[2] + ' clear ' + pr[3]);
-    log('[colour] temp ' + TEMP[col] + ' K  lux ' + Math.round(pr[1] * 0.3) + '  primary ' + nameOf(col));
-    log('[colour] normalised ' + f(pr[0] / s, 3) + ' ' + f(pr[1] / s, 3) + ' ' + f(pr[2] / s, 3));
-    log('[C] colour -> ' + nameOf(col));
+    log('Colour sensor readings: red ' + pr[0] + ', green ' + pr[1] + ', blue ' + pr[2] + ', overall brightness ' + pr[3] + '.');
+    log('Colour temperature ' + TEMP[col] + ' K, light level ' + Math.round(pr[1] * 0.3) + ' lux, strongest colour channel: ' + nameOf(col) + '.');
+    log('Share of each colour: red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) + '%.');
+    log('Point C: the paper is ' + nameOf(col) + '. Switching on the ' + nameOf(col) + ' LED.');
     setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
     leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
 
     // Task 3
-    log(''); log('=== TASK 3: Point D (sound) ===', 'h');
+    log(''); log('TASK 3 of 4: measuring a tap at Point D and showing its loudness on the indicator.', 'h');
     await goToStation(ST.D, id);
-    log('[D] listening for a tap (3 s)');
+    log('Listening for a tap (up to 3 seconds)...');
     await sleep(tap > 0 ? 900 : 3000, id);
     var amp = tap >= 40 ? tap : -1;
     var lv = amp < 0 ? 0 : clamp((amp - AMP_MIN) / (AMP_MAX - AMP_MIN), 0, 1);
-    log('[D] amplitude ' + amp + ' -> level ' + Math.round(lv * 100) + '%');
+    log(amp < 0 ? 'No tap heard in 3 seconds. Pointing at the bottom of the scale.' : 'Heard a tap: loudness ' + amp + ' out of 1023, which is ' + Math.round(lv * 100) + '% of the scale.');
     setLive('snd', (amp < 0 ? 'no tap' : amp) + ', ' + Math.round(lv * 100) + '%');
     var zp = IND.zLo + lv * (IND.zHi - IND.zLo);
     var ind = { name: 'indicator', theta: IND.theta, r: IND.r, z: zp, s: IND.s, tool: TOOLS.US };
     var p = stationPose(ind);
     setTarget(ind, 'indicator ' + f(zp, 0));
     if (p) { await moveTo(p, 1200, id); posLine('indicator'); }
-    log('[D] pointing at height ' + f(zp, 0) + ' mm');
+    log('Pointing at the indicator ' + f(zp, 0) + ' mm above the table.');
     await sleep(3000, id);
 
     // Task 4
-    log(''); log('=== TASK 4: Point E (Morse) ===', 'h');
+    log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
     var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('[morse] word ' + word);
+    log('Sending the word ' + word + ' in Morse code on the button.');
     for (var i = 0; i < word.length; i++) {
-      var code = MORSE[word[i]], txt = '[morse] ' + word[i] + '  ';
+      var code = MORSE[word[i]], txt = '   Letter ' + word[i] + ':';
       for (var c = 0; c < code.length; c++) {
-        txt += code[c] === '.' ? 'dot ' : 'DASH ';
+        txt += code[c] === '.' ? ' short press' : ' long press';
         setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
         snap(prs); btnOn = true; render();
         await sleep(code[c] === '.' ? UNIT : 3 * UNIT, id);
@@ -940,25 +954,26 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       if (i < word.length - 1) await sleep(3 * UNIT, id);
     }
     await sleep(8 * UNIT, id);
-    log('[morse] sent ' + word);
+    log('Finished sending ' + word + '. The receiver should now show it on its screen.');
 
     // Finish
     setTarget(null);
     await goToPose(ZERO, 'zero', id);
-    log(''); log('=========== RUN SUMMARY ===========', 'h');
-    log('A: ' + (rA ? 'object' : 'empty') + ' (' + f(dA) + ' cm)');
-    log('B: ' + (rB ? 'object' : 'empty') + ' (' + f(dB) + ' cm)');
-    log('Gesture: ' + (rA && rB ? 'YES then NO' : rA ? 'YES' : rB ? 'NO' : 'BOX'));
-    log('C colour: ' + nameOf(col));
-    log('D sound: amplitude ' + amp + ', level ' + Math.round(lv * 100) + '%');
-    log('E word: ' + word);
-    log('====================================', 'h');
+    log(''); log('========== RUN SUMMARY ==========', 'h');
+    log(distLine('Point A', dA, rA));
+    log(distLine('Point B', dB, rB));
+    log('Gesture made: ' + (rA && rB ? 'YES, then NO.' : rA ? 'YES.' : rB ? 'NO.' : 'BOX.'));
+    log('Point C colour: ' + nameOf(col) + '.');
+    log('Point D tap: ' + (amp < 0 ? 'none heard.' : 'loudness ' + amp + ', ' + Math.round(lv * 100) + '% of the scale.'));
+    log('Point E word sent: ' + word + '.');
+    log('=================================', 'h');
+    log('Run finished. Press the reset button on the Uno to run again.');
   }
 
   /* ============ test sketches (mirror the .ino files) ============ */
-  var JN = ['base', 'main arm', '2nd arm'];
+  var JN = ['base', 'main arm', 'second arm'];
   function anglesLine() {
-    log('[pos] base ' + f(cur[0], 0) + '  main ' + f(cur[1], 0) + ' (L raw ' + raw(90 + cur[1]) + ', R raw ' + raw(90 - cur[1]) + ')  2nd ' + f(cur[2], 0));
+    log('Now: base ' + f(cur[0], 0) + ' degrees, main arm ' + f(cur[1], 0) + ' degrees (left servo at ' + raw(90 + cur[1]) + ', right servo at ' + raw(90 - cur[1]) + '), second arm ' + f(cur[2], 0) + ' degrees.');
   }
   // test_servos moves 1 degree every 20 ms
   async function glide(j, to, id) {
@@ -967,70 +982,75 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
   async function testServos(id) {
     setTarget(null);
-    log(''); log('=== SERVO TEST ===', 'h');
+    log(''); log('SERVO TEST', 'h');
     await moveTo(ZERO, 600, id);
-    log('All joints at ZERO for 5 s: base forward, main arm upright, 2nd arm level');
+    log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
+    log('If any joint is not in that position, adjust its SERVO_ZERO value.');
     anglesLine();
     await sleep(5000, id);
-    log(''); log('--- Direction check: +10 on each joint ---', 'h');
+    log(''); log('DIRECTION CHECK: each joint moves 10 degrees one way and back. Watch which way it goes.', 'h');
     var expect = ['should turn LEFT, towards A and B', 'should lean FORWARD', 'should tilt UP'];
     for (var j = 0; j < 3; j++) {
-      log(JN[j] + ' +10, ' + expect[j]);
+      log('Moving the ' + JN[j] + ' 10 degrees. It ' + expect[j] + '. If not, flip its DIR value.');
       await glide(j, 10, id); await sleep(1500, id);
       await glide(j, 0, id); await sleep(500, id);
     }
-    log(''); log('--- Full sweep of every joint ---', 'h');
+    log(''); log('FULL SWEEP: each joint goes slowly to both ends of its range and back to the middle.', 'h');
     for (j = 0; j < 3; j++) {
-      log('Sweeping ' + JN[j] + ' from ' + MIN[j] + ' to ' + MAX[j]);
+      log('Sweeping the ' + JN[j] + ' from ' + MIN[j] + ' to ' + MAX[j] + ' degrees.');
       await glide(j, MIN[j], id); anglesLine(); await sleep(800, id);
       await glide(j, MAX[j], id); anglesLine(); await sleep(800, id);
       await glide(j, 0, id); anglesLine(); await sleep(500, id);
     }
-    log('Sweep done. Manual control ready: b30, m-10, e+, b++, z, s, p');
+    log('Sweep finished. You can now move joints by typing commands:');
+    log('  b30 = base to 30 degrees, m-10 = main arm to -10, e20 = second arm to 20');
+    log('  b+ / b- = nudge 1 degree, b++ / b-- = nudge 5 degrees (same for m and e)');
+    log('  z = back to rest, s = sweep again, p = print the angles');
   }
 
   async function testSensors(id) {
     setTarget(null);
     var obj = $('cObj').value, col = $('cCol').value, tap = +$('cTap').value;
-    log(''); log('=== SENSOR TEST ===', 'h');
-    log('colour sensor found');
-    log('Commands: r, g, b (calibrate colour), t (tap test)');
+    log(''); log('SENSOR TEST: reading all sensors twice a second. The arm does not move.', 'h');
+    log('Colour sensor: connected.');
+    log('Type r, g or b with that colour paper under the sensor to calibrate it, or t for a tap test.');
     var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
     for (var i = 0; i < 16; i++) {
       var d = obj === 'none' ? -1 : 10 + (Math.random() - 0.5) * 0.8;
       var snd = (i === 6 && tap > 0) ? tap : 4 + Math.round(Math.random() * 6);
       var cn = nameOf(col);
       setLive('dist', d < 0 ? 'no echo' : f(d) + ' cm'); setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K'); setLive('snd', snd);
-      log('dist ' + (d < 0 ? 'no echo' : f(d) + ' cm') + (d >= 2 && d <= US_MAX ? ' OBJECT' : ' empty') +
-          ' | colour ' + pr[0] + '/' + pr[1] + '/' + pr[2] + ' clr ' + pr[3] + ' n ' + f(pr[0] / s, 2) + ' ' + f(pr[1] / s, 2) + ' ' + f(pr[2] / s, 2) +
-          ' -> ' + cn + ' temp ' + TEMP[col] + 'K primary ' + cn + ' | sound ' + snd);
+      log('Distance: ' + (d < 0 ? 'no echo' : f(d) + ' cm') + (d >= 2 && d <= US_MAX ? ' (object found)' : ' (nothing there)') +
+          '.  Colour: ' + cn + ' (red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) +
+          '%, brightness ' + pr[3] + ', ' + TEMP[col] + ' K, strongest channel ' + cn + ').  Sound level: ' + snd + ' out of 1023.');
       leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
       await sleep(470, id);
     }
-    log('[sensor test keeps printing until the board is reset]', 'd');
+    log('(The sensor test keeps printing until the Uno is reset.)', 'd');
   }
 
   async function testCombined(id) {
     var col = $('cCol').value, tap = +$('cTap').value, obj = $('cObj').value;
-    log(''); log('=== COMBINED MOVEMENT TEST ===', 'h');
+    log(''); log('COMBINED MOVEMENT TEST: visiting every station and doing every movement, without making decisions.', 'h');
     setTarget(null);
     await moveTo(ZERO, 1200, id);
-    posLine('zero'); log('[zero] holding 5 s');
+    posLine('zero'); log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
     await sleep(5000, id);
-    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('[' + at + '] distance ' + (d < 0 ? 'no echo' : f(d) + ' cm')); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
-    if (await goToStation(ST.A, id)) { dist('A'); await nod(2, 'YES (up / down)', id); }
-    if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'NO (left / right)', id); }
+    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor.' : ': the ultrasonic sensor measures ' + f(d) + ' cm.')); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
+    if (await goToStation(ST.A, id)) { dist('A'); await nod(2, 'nodding YES (second arm up and down).', id); }
+    if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'shaking NO (base left and right).', id); }
     await box(id);
     if (await goToStation(ST.C, id)) {
       var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
-      log('[C] colour raw ' + pr[0] + '/' + pr[1] + '/' + pr[2] + ' clear ' + pr[3] + '  normalised ' + f(pr[0] / s, 2) + ' ' + f(pr[1] / s, 2) + ' ' + f(pr[2] / s, 2));
-      log('[C] temp ' + TEMP[col] + ' K  lux ' + Math.round(pr[1] * 0.3) + '  primary ' + nameOf(col));
+      log('Colour sensor readings: red ' + pr[0] + ', green ' + pr[1] + ', blue ' + pr[2] + ', overall brightness ' + pr[3] + '.');
+      log('Share of each colour: red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) + '%.');
+      log('Colour temperature ' + TEMP[col] + ' K, light level ' + Math.round(pr[1] * 0.3) + ' lux, strongest colour channel: ' + nameOf(col) + '.');
       setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
     }
     if (await goToStation(ST.D, id)) {
-      log('[D] listening 2 s, tap now');
+      log('Listening for 2 seconds. Tap now.');
       await sleep(2000, id);
-      log('[D] sound peak to peak ' + (tap > 0 ? tap : 9));
+      log('Loudest sound heard: ' + (tap > 0 ? tap : 9) + ' out of 1023.');
       setLive('snd', tap > 0 ? tap : 9);
     }
     for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
@@ -1039,14 +1059,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('[E] dot press (300 ms)'); setLive('morse', 'dot');
+    log('Short press on the button (300 ms, a Morse dot).'); setLive('morse', 'short press');
     snap(prs); btnOn = true; render(); await sleep(300, id); snap(hov); btnOn = false; render(); await sleep(600, id);
-    log('[E] dash press (900 ms)'); setLive('morse', 'DASH');
+    log('Long press on the button (900 ms, a Morse dash).'); setLive('morse', 'long press');
     snap(prs); btnOn = true; render(); await sleep(900, id); snap(hov); btnOn = false; render(); await sleep(600, id);
     posLine('E hover');
     setTarget(null);
     await goToPose(ZERO, 'zero', id);
-    log('=== DONE. Type any key to run again. ===', 'h');
+    log('Test finished. Type any key in the Serial Monitor and press Enter to run it again.', 'h');
   }
 
   var SKETCHES = {
@@ -1094,7 +1114,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     el.addEventListener('click', function () {
       var g = el.getAttribute('data-g');
       run(function (id) {
-        return g === 'yes' ? nod(2, 'YES (up / down)', id) : g === 'no' ? nod(0, 'NO (left / right)', id) : box(id);
+        return g === 'yes' ? nod(2, 'nodding YES (second arm up and down).', id) : g === 'no' ? nod(0, 'shaking NO (base left and right).', id) : box(id);
       }, 'Gesture');
     });
   });
@@ -1111,7 +1131,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     live = { dist: '-', col: '-', snd: '-', morse: '-' };
     run(s.fn, s.label);
   });
-  $('stopBtn').addEventListener('click', function () { runId++; setBusy(false, 'Stopped'); log('[stopped]', 'd'); });
+  $('stopBtn').addEventListener('click', function () { runId++; setBusy(false, 'Stopped'); log('(Stopped.)', 'd'); });
   $('speedBtn').addEventListener('click', function () {
     speed = speed === 1 ? 3 : (speed === 3 ? 6 : 1);
     this.textContent = 'Speed ' + speed + 'x';
@@ -1313,7 +1333,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   drawBB();
   drawParts();
   render();
-  log('Group 21 robotic arm, demonstration', 'h');
+  log('Group 21 robotic arm: demonstration program starting.', 'h');
   posLine('zero');
   log('Pick a sketch and press "Run sketch" to watch what it does to the arm.', 'd');
 })();

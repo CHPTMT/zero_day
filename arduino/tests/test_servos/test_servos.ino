@@ -33,7 +33,7 @@ const int8_t BASE_DIR = 1, MAIN_DIR = 1, ELBOW_DIR = 1;
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
 const float REL_MAX[NJ] = { 90,  50,  45};
-const char *NAMES[NJ] = {"base", "main arm", "2nd arm"};
+const char *NAMES[NJ] = {"base", "main arm", "second arm"};
 const char KEYS[NJ] = {'b', 'm', 'e'};
 
 Servo sBase, sLeft, sRight, sElbow;
@@ -75,11 +75,11 @@ void glide(uint8_t j, float target) {
 }
 
 void printAngles() {
-  Serial.print(F("[pos] base ")); Serial.print(cur[J_BASE], 0);
-  Serial.print(F("  main ")); Serial.print(cur[J_MAIN], 0);
-  Serial.print(F(" (L raw ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * cur[J_MAIN]));
-  Serial.print(F(", R raw ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * cur[J_MAIN]));
-  Serial.print(F(")  2nd ")); Serial.println(cur[J_ELBOW], 0);
+  Serial.print(F("Now: base ")); Serial.print(cur[J_BASE], 0);
+  Serial.print(F(" degrees, main arm ")); Serial.print(cur[J_MAIN], 0);
+  Serial.print(F(" degrees (left servo at ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * cur[J_MAIN]));
+  Serial.print(F(", right servo at ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * cur[J_MAIN]));
+  Serial.print(F("), second arm ")); Serial.print(cur[J_ELBOW], 0); Serial.println(F(" degrees."));
 }
 
 void goZero() {
@@ -88,10 +88,11 @@ void goZero() {
 }
 
 void directionCheck() {
-  Serial.println(F("\n--- Direction check: +10 on each joint ---"));
+  Serial.println(F("\nDIRECTION CHECK: each joint moves 10 degrees one way and back. Watch which way it goes."));
   const char *expect[NJ] = {"should turn LEFT, towards A and B", "should lean FORWARD", "should tilt UP"};
   for (uint8_t j = 0; j < NJ; j++) {
-    Serial.print(NAMES[j]); Serial.print(F(" +10, ")); Serial.println(expect[j]);
+    Serial.print(F("Moving the ")); Serial.print(NAMES[j]); Serial.print(F(" 10 degrees. It ")); Serial.print(expect[j]);
+    Serial.println(F(". If not, flip its DIR value."));
     glide(j, 10);
     delay(1500);
     glide(j, 0);
@@ -100,16 +101,19 @@ void directionCheck() {
 }
 
 void sweepAll() {
-  Serial.println(F("\n--- Full sweep of every joint ---"));
+  Serial.println(F("\nFULL SWEEP: each joint goes slowly to both ends of its range and back to the middle."));
   for (uint8_t j = 0; j < NJ; j++) {
-    Serial.print(F("Sweeping ")); Serial.print(NAMES[j]);
+    Serial.print(F("Sweeping the ")); Serial.print(NAMES[j]);
     Serial.print(F(" from ")); Serial.print(REL_MIN[j], 0);
-    Serial.print(F(" to ")); Serial.println(REL_MAX[j], 0);
+    Serial.print(F(" to ")); Serial.print(REL_MAX[j], 0); Serial.println(F(" degrees."));
     glide(j, REL_MIN[j]); printAngles(); delay(800);
     glide(j, REL_MAX[j]); printAngles(); delay(800);
     glide(j, 0);          printAngles(); delay(500);
   }
-  Serial.println(F("Sweep done. Manual control ready: b30, m-10, e+, b++, z, s, p"));
+  Serial.println(F("Sweep finished. You can now move joints by typing commands:"));
+  Serial.println(F("  b30 = base to 30 degrees, m-10 = main arm to -10, e20 = second arm to 20"));
+  Serial.println(F("  b+ / b- = nudge 1 degree, b++ / b-- = nudge 5 degrees (same for m and e)"));
+  Serial.println(F("  z = back to rest, s = sweep again, p = print the angles"));
 }
 
 void handle(String cmd) {
@@ -130,7 +134,7 @@ void handle(String cmd) {
     printAngles();
     return;
   }
-  Serial.println(F("Unknown command"));
+  Serial.println(F("Command not recognised. Try b30, m-10, e+, z, s or p."));
 }
 
 void setup() {
@@ -142,8 +146,9 @@ void setup() {
   sElbow.attach(PIN_ELBOW);
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
 
-  Serial.println(F("\n=== SERVO TEST ==="));
-  Serial.println(F("All joints at ZERO for 5 s: base forward, main arm upright, 2nd arm level"));
+  Serial.println(F("\nSERVO TEST"));
+  Serial.println(F("Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level."));
+  Serial.println(F("If any joint is not in that position, adjust its SERVO_ZERO value."));
   printAngles();
   delay(5000);
 

@@ -102,7 +102,7 @@ int soundLevelNow() {
 
 // Same capture as Task 3: wait up to 3 s for a tap.
 void tapTest() {
-  Serial.println(F("[tap] tap once within 3 s"));
+  Serial.println(F("Tap test: tap once within the next 3 seconds."));
   long sum = 0;
   for (uint8_t i = 0; i < 64; i++) sum += analogRead(PIN_SOUND);
   int baseline = sum / 64;
@@ -119,16 +119,16 @@ void tapTest() {
       }
       int amp = max(hi - lo, abs(v - baseline));
       float f = constrain((float)(amp - (int)SOUND_AMP_MIN) / (SOUND_AMP_MAX - SOUND_AMP_MIN), 0.0, 1.0);
-      Serial.print(F("[tap] amplitude ")); Serial.print(amp);
-      Serial.print(F(" -> level ")); Serial.print((int)(f * 100)); Serial.println('%');
+      Serial.print(F("Tap heard: loudness ")); Serial.print(amp);
+      Serial.print(F(" out of 1023, which is ")); Serial.print((int)(f * 100)); Serial.println(F("% of the indicator scale."));
       return;
     }
   }
-  Serial.println(F("[tap] timeout, nothing heard"));
+  Serial.println(F("No tap heard in 3 seconds."));
 }
 
 void calibrate(char which) {
-  if (!tcsOk) { Serial.println(F("colour sensor missing")); return; }
+  if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so it cannot be calibrated.")); return; }
   float acc[3] = {0, 0, 0};
   for (uint8_t i = 0; i < 10; i++) {
     float n[3];
@@ -138,7 +138,8 @@ void calibrate(char which) {
   }
   float *ref = which == 'r' ? REF_RED : (which == 'g' ? REF_GREEN : REF_BLUE);
   for (uint8_t k = 0; k < 3; k++) ref[k] = acc[k];
-  Serial.print(F(">>> const float "));
+  Serial.println(F("Calibration done. Copy this line into arm_controller.ino:"));
+  Serial.print(F("const float "));
   Serial.print(which == 'r' ? F("REF_RED") : (which == 'g' ? F("REF_GREEN") : F("REF_BLUE")));
   Serial.print(F("[3] = {"));
   Serial.print(acc[0], 3); Serial.print(F(", "));
@@ -154,9 +155,9 @@ void setup() {
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_BLUE, OUTPUT);
   tcsOk = tcs.begin();
-  Serial.println(F("\n=== SENSOR TEST ==="));
-  Serial.println(tcsOk ? F("colour sensor found") : F("colour sensor NOT found (check A4, A5, power)"));
-  Serial.println(F("Commands: r, g, b (calibrate colour), t (tap test)"));
+  Serial.println(F("\nSENSOR TEST: reading all sensors twice a second. The arm does not move."));
+  Serial.println(tcsOk ? F("Colour sensor: connected.") : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires and power."));
+  Serial.println(F("Type r, g or b with that colour paper under the sensor to calibrate it, or t for a tap test."));
 }
 
 void loop() {
@@ -167,33 +168,32 @@ void loop() {
   }
 
   float d = medianCm();
-  Serial.print(F("dist "));
+  Serial.print(F("Distance: "));
   if (d < 0) Serial.print(F("no echo"));
   else { Serial.print(d, 1); Serial.print(F(" cm")); }
-  Serial.print((d >= US_DETECT_MIN_CM && d <= US_DETECT_MAX_CM) ? F(" OBJECT") : F(" empty"));
+  Serial.print((d >= US_DETECT_MIN_CM && d <= US_DETECT_MAX_CM) ? F(" (object found)") : F(" (nothing there)"));
 
-  Serial.print(F(" | colour "));
+  Serial.print(F(".  Colour: "));
   if (tcsOk) {
     float n[3];
     uint16_t raw[4];
     readNorm(n, raw);
     char col = classify(n);
-    Serial.print(raw[0]); Serial.print('/'); Serial.print(raw[1]); Serial.print('/');
-    Serial.print(raw[2]); Serial.print(F(" clr ")); Serial.print(raw[3]);
-    Serial.print(F(" n ")); Serial.print(n[0], 2); Serial.print(' ');
-    Serial.print(n[1], 2); Serial.print(' '); Serial.print(n[2], 2);
-    Serial.print(F(" -> ")); Serial.print(col == 'R' ? F("RED") : (col == 'G' ? F("GREEN") : F("BLUE")));
-    // Colour temperature and the strongest raw channel (primary colour)
-    Serial.print(F(" temp ")); Serial.print(tcs.calculateColorTemperature_dn40(raw[0], raw[1], raw[2], raw[3]));
-    Serial.print(F("K primary "));
+    Serial.print(col == 'R' ? F("RED") : (col == 'G' ? F("GREEN") : F("BLUE")));
+    Serial.print(F(" (red ")); Serial.print((int)(n[0] * 100)); Serial.print(F("%, green "));
+    Serial.print((int)(n[1] * 100)); Serial.print(F("%, blue ")); Serial.print((int)(n[2] * 100));
+    Serial.print(F("%, brightness ")); Serial.print(raw[3]);
+    Serial.print(F(", ")); Serial.print(tcs.calculateColorTemperature_dn40(raw[0], raw[1], raw[2], raw[3]));
+    Serial.print(F(" K, strongest channel "));
     if (raw[0] >= raw[1] && raw[0] >= raw[2]) Serial.print(F("RED"));
     else Serial.print(raw[1] >= raw[2] ? F("GREEN") : F("BLUE"));
+    Serial.print(')');
     showLed(col);
   } else {
-    Serial.print(F("missing"));
+    Serial.print(F("sensor not connected"));
   }
 
   int s = soundLevelNow();
-  Serial.print(F(" | sound ")); Serial.println(s);
+  Serial.print(F(".  Sound level: ")); Serial.print(s); Serial.println(F(" out of 1023."));
   delay(300);
 }

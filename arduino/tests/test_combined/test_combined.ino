@@ -38,7 +38,7 @@ const float REL_MAX[NJ] = { 90,  50,  45};
 
 // ---------------- dimensions (mm) ----------------
 const float SHOULDER_HEIGHT_MM = 130, LINK1_MM = 225, LINK2_MM = 160;
-const char *JOINT_NAMES[NJ] = {"base", "main", "2nd"};
+const char *JOINT_NAMES[NJ] = {"base", "main arm", "second arm"};
 
 // ---------------- sensor board (offsets from the end of the second arm) ----------------
 // along = out along the arm axis, down = square to the arm, side + = your right facing the machine
@@ -60,15 +60,15 @@ const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 30 mm bar under
 
 // ---------------- stations ----------------
 struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; const Tool *tool; };
-Station ST_A       = {"A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};
-Station ST_B       = {"B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
-Station ST_C       = {"C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};
-Station ST_D       = {"D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};
-Station ST_IND_LO  = {"ind low", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
-Station ST_IND_MID = {"ind mid", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
-Station ST_IND_HI  = {"ind high",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
-Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};
-Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
+Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};
+Station ST_B       = {"Point B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
+Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};
+Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};
+Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
+Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
+Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
+Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};
+Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint8_t STEP_MS = 20;
@@ -192,48 +192,61 @@ bool pressAtLimit(const Station &s, Pose &out) {
     toolPoint(out, *s.tool, th, r, z);
     if (z > wantZ) lo = out.a[J_MAIN]; else hi = out.a[J_MAIN];
   }
-  Serial.print(F("[ik] ")); Serial.print(s.name);
-  Serial.print(F(": 2nd arm held at its limit, pusher tip ")); Serial.print(s.r - r, 0);
-  Serial.println(F(" mm short of the button centre"));
+  Serial.print(F("Note: ")); Serial.print(s.name);
+  Serial.print(F(" needs the second arm past its limit, so it is held at the limit. The pusher will land "));
+  Serial.print(s.r - r, 0); Serial.println(F(" mm short of the button centre."));
   return true;
 }
 
 // Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
   if (!toolIK(s, out)) {
-    Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
+    Serial.print(F("WARNING: ")); Serial.print(s.name); Serial.println(F(" is out of the arm's reach. Skipping this move."));
     return false;
   }
   if (s.tool->pressDown && out.a[J_ELBOW] > REL_MAX[J_ELBOW]) pressAtLimit(s, out);
   for (uint8_t j = 0; j < NJ; j++) {
     out.a[j] += s.trim[j];
     if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) {
-      Serial.print(F("[ik] ")); Serial.print(s.name); Serial.print(F(" ")); Serial.print(JOINT_NAMES[j]);
-      Serial.print(F(" limit, wanted ")); Serial.println(out.a[j]);
+      Serial.print(F("WARNING: ")); Serial.print(s.name); Serial.print(F(" needs the ")); Serial.print(JOINT_NAMES[j]);
+      Serial.print(F(" at ")); Serial.print(out.a[j], 1); Serial.println(F(" degrees, past its limit. Using the limit instead."));
       out.a[j] = constrain(out.a[j], REL_MIN[j], REL_MAX[j]);
     }
   }
   return true;
 }
 
-void printTool(const Tool &t) {
-  float th, r, z;
-  toolPoint(cur, t, th, r, z);
-  Serial.print(F("  ")); Serial.print(t.name);
-  Serial.print(F(" (")); Serial.print(th, 0);
-  Serial.print(F(", ")); Serial.print(r, 0);
-  Serial.print(F(", ")); Serial.print(z, 0); Serial.print(')');
+// One joint in words, e.g. "turned 80.0 degrees left" or "facing forward".
+void printJoint(float v, const __FlashStringHelper *verb, const __FlashStringHelper *plus,
+                const __FlashStringHelper *minus, const __FlashStringHelper *atZero) {
+  if (fabs(v) < 0.5) { Serial.print(atZero); return; }
+  Serial.print(verb); Serial.print(' '); Serial.print(fabs(v), 1);
+  Serial.print(F(" degrees ")); Serial.print(v > 0 ? plus : minus);
 }
 
-// Joint angles, then where every tool is as (theta, r, z).
+// Where one sensor is: how far out from the base and how high above the table.
+void printTool(const __FlashStringHelper *name, const Tool &t) {
+  float th, r, z;
+  toolPoint(cur, t, th, r, z);
+  Serial.print(name); Serial.print(' '); Serial.print(r, 0);
+  Serial.print(F(" mm out and ")); Serial.print(z, 0); Serial.print(F(" mm up"));
+}
+
+// Plain description of the arm after a move: each joint, then each sensor.
 void printPosition(const char *label) {
-  Serial.print(F("[pos] ")); Serial.print(label);
-  Serial.print(F("  base ")); Serial.print(cur.a[J_BASE], 1);
-  Serial.print(F("  main ")); Serial.print(cur.a[J_MAIN], 1);
-  Serial.print(F("  2nd ")); Serial.println(cur.a[J_ELBOW], 1);
-  Serial.print(F("     "));
-  printTool(TOOL_US); printTool(TOOL_RGB); printTool(TOOL_SOUND); printTool(TOOL_PUSHER);
-  Serial.println();
+  Serial.print(F("Arrived at ")); Serial.print(label); Serial.print(F(". Base "));
+  printJoint(cur.a[J_BASE], F("turned"), F("left"), F("right"), F("facing forward"));
+  Serial.print(F(", main arm "));
+  printJoint(cur.a[J_MAIN], F("leaning"), F("forward"), F("back"), F("upright"));
+  Serial.print(F(", second arm "));
+  printJoint(cur.a[J_ELBOW], F("tilted"), F("up"), F("down"), F("level"));
+  Serial.println('.');
+  Serial.print(F("   Sensors: "));
+  printTool(F("ultrasonic"), TOOL_US);   Serial.print(F("; "));
+  printTool(F("colour"), TOOL_RGB);      Serial.print(F("; "));
+  printTool(F("sound"), TOOL_SOUND);     Serial.print(F("; "));
+  printTool(F("pusher tip"), TOOL_PUSHER);
+  Serial.println('.');
 }
 
 void goToPose(const Pose &p, const char *label) {
@@ -279,43 +292,43 @@ float readDistanceCm() {
 
 void printDistance(const char *at) {
   float d = readDistanceCm();
-  Serial.print(F("[")); Serial.print(at); Serial.print(F("] distance "));
-  if (d < 0) Serial.println(F("no echo"));
-  else { Serial.print(d, 1); Serial.println(F(" cm")); }
+  Serial.print(at);
+  if (d < 0) Serial.println(F(": no echo came back to the ultrasonic sensor."));
+  else { Serial.print(F(": the ultrasonic sensor measures ")); Serial.print(d, 1); Serial.println(F(" cm.")); }
 }
 
 void printColour() {
-  if (!tcsOk) { Serial.println(F("[C] colour sensor missing")); return; }
+  if (!tcsOk) { Serial.println(F("Colour sensor not connected, no reading.")); return; }
   uint16_t r, g, b, c;
   tcs.getRawData(&r, &g, &b, &c);
   float s = (float)r + g + b;
   if (s == 0) s = 1;
-  Serial.print(F("[C] colour raw ")); Serial.print(r); Serial.print('/'); Serial.print(g);
-  Serial.print('/'); Serial.print(b); Serial.print(F(" clear ")); Serial.print(c);
-  Serial.print(F("  normalised ")); Serial.print(r / s, 2); Serial.print(' ');
-  Serial.print(g / s, 2); Serial.print(' '); Serial.println(b / s, 2);
-  Serial.print(F("[C] temp ")); Serial.print(tcs.calculateColorTemperature_dn40(r, g, b, c));
-  Serial.print(F(" K  lux ")); Serial.print(tcs.calculateLux(r, g, b));
-  Serial.print(F("  primary "));
-  if (r >= g && r >= b) Serial.println(F("RED"));
-  else Serial.println(g >= b ? F("GREEN") : F("BLUE"));
+  Serial.print(F("Colour sensor readings: red ")); Serial.print(r); Serial.print(F(", green ")); Serial.print(g);
+  Serial.print(F(", blue ")); Serial.print(b); Serial.print(F(", overall brightness ")); Serial.print(c); Serial.println('.');
+  Serial.print(F("Share of each colour: red ")); Serial.print((int)(r * 100 / s)); Serial.print(F("%, green "));
+  Serial.print((int)(g * 100 / s)); Serial.print(F("%, blue ")); Serial.print((int)(b * 100 / s)); Serial.println(F("%."));
+  Serial.print(F("Colour temperature ")); Serial.print(tcs.calculateColorTemperature_dn40(r, g, b, c));
+  Serial.print(F(" K, light level ")); Serial.print(tcs.calculateLux(r, g, b));
+  Serial.print(F(" lux, strongest colour channel: "));
+  if (r >= g && r >= b) Serial.println(F("RED."));
+  else Serial.println(g >= b ? F("GREEN.") : F("BLUE."));
 }
 
 void printSound() {
   int lo = 1023, hi = 0;
   unsigned long end = millis() + 2000;
-  Serial.println(F("[D] listening 2 s, tap now"));
+  Serial.println(F("Listening for 2 seconds. Tap now."));
   while ((long)(end - millis()) > 0) {
     int s = analogRead(PIN_SOUND);
     if (s < lo) lo = s;
     if (s > hi) hi = s;
   }
-  Serial.print(F("[D] sound peak to peak ")); Serial.println(hi - lo);
+  Serial.print(F("Loudest sound heard: ")); Serial.print(hi - lo); Serial.println(F(" out of 1023."));
 }
 
 // ---------------- gestures and presses ----------------
 void nod(uint8_t j, const __FlashStringHelper *name) {
-  Serial.print(F("[gesture] ")); Serial.println(name);
+  Serial.print(F("Gesture: ")); Serial.println(name);
   float c = cur.a[j];
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
     moveJoint(j, c + GESTURE_DEG, GESTURE_STEP_MS);
@@ -325,7 +338,7 @@ void nod(uint8_t j, const __FlashStringHelper *name) {
 }
 
 void box() {
-  Serial.println(F("[gesture] BOX"));
+  Serial.println(F("Gesture: drawing a BOX."));
   float cb = cur.a[J_BASE], ce = cur.a[J_ELBOW];
   const int8_t k[5][2] = {{-1, 1}, {1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
   for (uint8_t i = 0; i < 5; i++) {
@@ -341,14 +354,14 @@ void box() {
 }
 
 void runAll() {
-  Serial.println(F("\n=== COMBINED MOVEMENT TEST ==="));
+  Serial.println(F("\nCOMBINED MOVEMENT TEST: visiting every station and doing every movement, without making decisions."));
   moveTo(ZERO_POSE, MOVE_MS);
-  printPosition("zero");
-  Serial.println(F("[zero] holding 5 s"));
+  printPosition("the rest position");
+  Serial.println(F("Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level."));
   delay(5000);
 
-  if (goToStation(ST_A)) { printDistance("A"); nod(J_ELBOW, F("YES (up / down)")); }
-  if (goToStation(ST_B)) { printDistance("B"); nod(J_BASE, F("NO (left / right)")); }
+  if (goToStation(ST_A)) { printDistance("Point A"); nod(J_ELBOW, F("nodding YES (second arm up and down).")); }
+  if (goToStation(ST_B)) { printDistance("Point B"); nod(J_BASE, F("shaking NO (base left and right).")); }
   box();
   if (goToStation(ST_C)) printColour();
   if (goToStation(ST_D)) printSound();
@@ -358,16 +371,16 @@ void runAll() {
 
   Pose hover, press;
   if (stationPose(ST_E_HOVER, hover) && stationPose(ST_E_PRESS, press)) {
-    goToPose(hover, "E hover");
-    Serial.println(F("[E] dot press (300 ms)"));
+    goToPose(hover, "Point E (above the button)");
+    Serial.println(F("Short press on the button (300 ms, a Morse dot)."));
     writePose(press); delay(300); writePose(hover); delay(600);
-    Serial.println(F("[E] dash press (900 ms)"));
+    Serial.println(F("Long press on the button (900 ms, a Morse dash)."));
     writePose(press); delay(900); writePose(hover); delay(600);
-    printPosition("E hover");
+    printPosition("Point E (above the button)");
   }
 
-  goToPose(ZERO_POSE, "zero");
-  Serial.println(F("=== DONE. Type any key to run again. ==="));
+  goToPose(ZERO_POSE, "the rest position");
+  Serial.println(F("Test finished. Type any key in the Serial Monitor and press Enter to run it again."));
 }
 
 void setup() {
