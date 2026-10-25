@@ -28,11 +28,10 @@
  *               always moved in opposite directions.
  *     2nd arm   0 = level with the ground when the main arm is upright,
  *               + = up (max +45), - = down (max -90)
- *   Each servo's rest position is a pulse width in microseconds (1500 = the
- *   middle of the servo's travel). Set them on the arm: type ZERO during the
- *   5 s rest hold, nudge each servo until the arm sits right, type SAVE. They
- *   are kept in EEPROM and used every run after that.
- *   If a joint moves the wrong way, flip its xxx_DIR from 1 to -1.
+ *   Each servo's rest position (a pulse width, 1500 us = middle of travel)
+ *   and each joint's direction are set ON THE ARM, not in this file: type
+ *   SETUP during the 5 s rest hold. They are saved in EEPROM, so uploading a
+ *   new version of this code does not lose them.
  *
  * POSITIONING
  *   Joint angles are calculated on board from the station coordinates in the
@@ -45,7 +44,7 @@
  * QUICK EDITS ON THE DAY
  *   Word: type it in the Serial Monitor during the 5 s zero hold (e.g. NET).
  *         Saved in EEPROM. Or change DEFAULT_WORD.
- *   Rest position: type ZERO during the 5 s zero hold (see SERVO REST POSITIONS).
+ *   Rest position and directions: type SETUP during the 5 s zero hold (see SERVO SET-UP).
  *   Fallback: set RUN_TASK_x to false to skip a task that keeps failing.
  *   Re-run: press the Uno reset button.
  *
@@ -90,20 +89,22 @@ const uint8_t PIN_BUZZER     = 11;   // beeper: + to D11, - to GND
 const uint8_t PIN_STATUS     = 13;   // onboard LED
 
 // ======================================================================
-// SERVO REST POSITIONS
+// SERVO SET-UP (rest positions and directions, saved in EEPROM)
 // ======================================================================
-// Pulse width (microseconds) that holds each servo at the rest position:
-// base facing forward, main arm upright, second arm level. 1500 us is the
-// true middle of a standard servo's travel (500 to 2500 us = 0 to 180 deg).
-// These are only the starting values. Set the real ones on the arm:
+// The rest position of each servo is a pulse width in microseconds (1500 us is
+// the middle of a standard servo's travel, 500 to 2500 us = 0 to 180 deg).
+// Each joint also has a direction (+1 or -1). Both are set on the arm and kept
+// in EEPROM, so they survive uploading new code:
 //   1. Open the Serial Monitor (115200, New Line) and press reset.
-//   2. During the 5 s rest hold type ZERO and press Enter.
-//   3. Nudge each servo (b = base, l = main arm left servo, r = main arm right
-//      servo, m = both main arm servos together, e = second arm):
-//        b+ / b-    about 1 degree       b++ / b--  about 5 degrees
-//   4. Type SAVE (kept in EEPROM, used every run after this), then GO.
-// The two main arm servos face each other: set each one on its own (l and r)
-// until neither buzzes, then use m to stand the arm upright.
+//   2. During the 5 s rest hold type SETUP and press Enter.
+//   3. Rest position: nudge each servo until the base faces forward, the main
+//      arm stands upright and the second arm is level (b = base, l = main arm
+//      left servo, r = main arm right servo, m = both main arm servos, e =
+//      second arm; + / - about 1 degree, ++ / -- about 5 degrees).
+//   4. Directions: tb, tm, te move one joint 15 degrees and back. The base must
+//      turn LEFT (towards A and B), the main arm lean FORWARD, the second arm
+//      tilt UP. If one goes the other way, flip it with fb, fm or fe.
+//   5. Type SAVE, then GO.
 enum ServoId : uint8_t { S_BASE = 0, S_LEFT = 1, S_RIGHT = 2, S_ELBOW = 3, NS = 4 };
 const int   ZERO_US_DEFAULT[NS] = {1500, 1500, 1500, 1500};   // base, main left, main right, second arm
 const float US_PER_DEG   = 1000.0 / 90.0;   // about 11 us per degree
@@ -111,17 +112,14 @@ const int   SERVO_MIN_US = 500;
 const int   SERVO_MAX_US = 2500;
 const int   ZERO_STEP_US = 10;              // one nudge, about 1 degree
 const char *SERVO_NAMES[NS] = {"base", "main arm left", "main arm right", "second arm"};
-int zeroUs[NS];                             // filled from EEPROM at start up
+int zeroUs[NS];                             // rest pulses, loaded from EEPROM at start up
+int8_t dirBase = 1, dirMain = 1, dirElbow = 1;   // joint directions, loaded from EEPROM at start up
+// dirMain = 1 means: forward = left servo pulse goes up, right servo pulse goes down.
 
-// Direction of each joint. Flip to -1 if the joint moves the wrong way.
-// MAIN_DIR = 1 means: forward = left servo value goes up, right servo goes down.
-const int8_t BASE_DIR  = 1;
 // Base drive: the servo turns the turntable through a gear. Servo degrees for
 // one degree of turntable: 1.0 if both gears have the same number of teeth,
 // otherwise (turntable teeth) / (servo gear teeth).
 const float  BASE_GEAR_RATIO = 1.0;
-const int8_t MAIN_DIR  = 1;
-const int8_t ELBOW_DIR = 1;
 
 // Relative limits in degrees
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
@@ -331,14 +329,14 @@ void writeJoint(uint8_t j, float rel) {
   cur.a[j] = rel;
   switch (j) {
     case J_BASE:
-      sBase.writeMicroseconds(pulseAt(S_BASE, BASE_DIR * BASE_GEAR_RATIO * rel));
+      sBase.writeMicroseconds(pulseAt(S_BASE, dirBase * BASE_GEAR_RATIO * rel));
       break;
     case J_MAIN:
-      sLeft.writeMicroseconds(pulseAt(S_LEFT, MAIN_DIR * rel));
-      sRight.writeMicroseconds(pulseAt(S_RIGHT, -MAIN_DIR * rel));
+      sLeft.writeMicroseconds(pulseAt(S_LEFT, dirMain * rel));
+      sRight.writeMicroseconds(pulseAt(S_RIGHT, -dirMain * rel));
       break;
     case J_ELBOW:
-      sElbow.writeMicroseconds(pulseAt(S_ELBOW, ELBOW_DIR * rel));
+      sElbow.writeMicroseconds(pulseAt(S_ELBOW, dirElbow * rel));
       break;
   }
 }
@@ -860,46 +858,79 @@ void loadWord() {
   if (!validWord(targetWord)) strcpy(targetWord, DEFAULT_WORD);
 }
 
-// Rest positions in EEPROM: a marker byte, then four 16 bit pulse widths.
-const int     EE_ZERO_MARK_ADDR = 8;
-const int     EE_ZERO_ADDR      = 10;
-const uint8_t EE_ZERO_MARK      = 0x5A;
+// Set-up in EEPROM: a marker byte, four 16 bit rest pulses, three directions.
+const int     EE_SETUP_MARK_ADDR = 8;
+const int     EE_ZERO_ADDR       = 10;     // 10 to 17
+const int     EE_DIR_ADDR        = 18;     // 18 to 20
+const uint8_t EE_MARK_ZEROS      = 0x5A;   // older version: rest pulses only
+const uint8_t EE_MARK_FULL       = 0x5B;   // rest pulses and directions
+bool setupSaved = false;
 
-void loadZeros() {
-  bool saved = EEPROM.read(EE_ZERO_MARK_ADDR) == EE_ZERO_MARK;
+int8_t dirFrom(uint8_t b) { return b == 0xFF ? -1 : 1; }   // stored as 1 or 0xFF (-1)
+
+void loadSetup() {
+  uint8_t mark = EEPROM.read(EE_SETUP_MARK_ADDR);
+  setupSaved = (mark == EE_MARK_ZEROS || mark == EE_MARK_FULL);
   for (uint8_t i = 0; i < NS; i++) {
     int16_t v = ZERO_US_DEFAULT[i];
-    if (saved) EEPROM.get(EE_ZERO_ADDR + 2 * i, v);
+    if (setupSaved) EEPROM.get(EE_ZERO_ADDR + 2 * i, v);
     zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
+  }
+  if (mark == EE_MARK_FULL) {
+    dirBase  = dirFrom(EEPROM.read(EE_DIR_ADDR));
+    dirMain  = dirFrom(EEPROM.read(EE_DIR_ADDR + 1));
+    dirElbow = dirFrom(EEPROM.read(EE_DIR_ADDR + 2));
   }
 }
 
-void saveZeros() {
+void saveSetup() {
   for (uint8_t i = 0; i < NS; i++) EEPROM.put(EE_ZERO_ADDR + 2 * i, (int16_t)zeroUs[i]);
-  EEPROM.update(EE_ZERO_MARK_ADDR, EE_ZERO_MARK);
+  EEPROM.update(EE_DIR_ADDR,     (uint8_t)dirBase);
+  EEPROM.update(EE_DIR_ADDR + 1, (uint8_t)dirMain);
+  EEPROM.update(EE_DIR_ADDR + 2, (uint8_t)dirElbow);
+  EEPROM.update(EE_SETUP_MARK_ADDR, EE_MARK_FULL);
+  setupSaved = true;
 }
 
-void printZeros() {
+void printSetup() {
   Serial.print(F("Rest position pulses: "));
   for (uint8_t i = 0; i < NS; i++) {
     Serial.print(SERVO_NAMES[i]); Serial.print(' '); Serial.print(zeroUs[i]); Serial.print(F(" us"));
-    Serial.print(i < NS - 1 ? F(", ") : F(".\n"));
+    Serial.print(i < NS - 1 ? F(", ") : F(". "));
   }
+  Serial.print(F("Directions: base ")); Serial.print(dirBase > 0 ? F("normal") : F("flipped"));
+  Serial.print(F(", main arm ")); Serial.print(dirMain > 0 ? F("normal") : F("flipped"));
+  Serial.print(F(", second arm ")); Serial.print(dirElbow > 0 ? F("normal") : F("flipped"));
+  Serial.println('.');
 }
 
-// Interactive set-up of the rest position. The arm holds zero and each
-// command nudges one servo, so the result is seen straight away.
-void setRestPosition() {
-  Serial.println(F("\nREST POSITION SET-UP. Nudge each servo until the base faces forward, the main arm"));
-  Serial.println(F("stands upright and the second arm is level. Commands (press Enter after each):"));
-  Serial.println(F("  b+ b- b++ b--   base (1 or 5 degrees)"));
-  Serial.println(F("  l+ l- l++ l--   main arm left servo on its own"));
-  Serial.println(F("  r+ r- r++ r--   main arm right servo on its own"));
-  Serial.println(F("  m+ m- m++ m--   both main arm servos together (leans the main arm)"));
-  Serial.println(F("  e+ e- e++ e--   second arm"));
-  Serial.println(F("  SAVE  keep these values    RESET  back to 1500 us    GO  start the run"));
+// Moves one joint 15 degrees and back, saying which way it should go.
+void testDirection(uint8_t j) {
+  const __FlashStringHelper *should[NJ] = {F("turn LEFT, towards A and B"), F("lean FORWARD"), F("tilt UP")};
+  Serial.print(F("Moving the ")); Serial.print(JOINT_NAMES[j]); Serial.print(F(" 15 degrees. It should "));
+  Serial.print(should[j]); Serial.println(F(". If it goes the other way, flip it."));
+  Pose p = ZERO_POSE;
+  p.a[j] = 15;
+  moveTo(p, 1500);
+  delay(1500);
+  moveTo(ZERO_POSE, 1500);
+}
+
+// Interactive set-up of the rest position and directions. The arm holds
+// zero and each command takes effect straight away.
+void servoSetup() {
+  Serial.println(F("\nSERVO SET-UP. Commands (press Enter after each):"));
+  Serial.println(F("  Rest position: nudge until the base faces forward, the main arm stands upright, the second arm is level."));
+  Serial.println(F("    b+ b- b++ b--   base (1 or 5 degrees)"));
+  Serial.println(F("    l+ l- l++ l--   main arm left servo on its own"));
+  Serial.println(F("    r+ r- r++ r--   main arm right servo on its own"));
+  Serial.println(F("    m+ m- m++ m--   both main arm servos together (leans the main arm)"));
+  Serial.println(F("    e+ e- e++ e--   second arm"));
+  Serial.println(F("  Directions: tb tm te test the base, main arm, second arm; fb fm fe flip one."));
+  Serial.println(F("  SAVE  keep everything    RESET  back to 1500 us, all normal    GO  start the run"));
   writePose(ZERO_POSE);
-  printZeros();
+  printSetup();
+  const char *bad = "Not recognised. Try b+, l-, r++, m--, e+, tb, fm, SAVE, RESET or GO.";
   char buf[8];
   uint8_t n = 0;
   while (true) {
@@ -909,38 +940,46 @@ void setRestPosition() {
     buf[n] = '\0';
     n = 0;
     if (buf[0] == '\0') continue;
-    if (strcmp(buf, "go") == 0) { Serial.println(F("Leaving the rest position set-up.")); return; }
-    if (strcmp(buf, "save") == 0) { saveZeros(); Serial.println(F("Saved. These rest positions are used from now on.")); continue; }
+    if (strcmp(buf, "go") == 0) { Serial.println(F("Leaving the servo set-up.")); return; }
+    if (strcmp(buf, "save") == 0) { saveSetup(); Serial.println(F("Saved. Used every run from now on, even after uploading new code.")); continue; }
     if (strcmp(buf, "reset") == 0) {
       for (uint8_t i = 0; i < NS; i++) zeroUs[i] = ZERO_US_DEFAULT[i];
+      dirBase = dirMain = dirElbow = 1;
+    } else if (buf[0] == 't' && buf[2] == '\0' && (buf[1] == 'b' || buf[1] == 'm' || buf[1] == 'e')) {
+      testDirection(buf[1] == 'b' ? J_BASE : buf[1] == 'm' ? J_MAIN : J_ELBOW);
+      continue;
+    } else if (buf[0] == 'f' && buf[2] == '\0' && (buf[1] == 'b' || buf[1] == 'm' || buf[1] == 'e')) {
+      if (buf[1] == 'b') dirBase = -dirBase;
+      else if (buf[1] == 'm') dirMain = -dirMain;
+      else dirElbow = -dirElbow;
     } else {
       const char *rest = buf + 1;
       int step = strcmp(rest, "+") == 0 ? 1 : strcmp(rest, "-") == 0 ? -1 :
                  strcmp(rest, "++") == 0 ? 5 : strcmp(rest, "--") == 0 ? -5 : 0;
       step *= ZERO_STEP_US;
-      if (step == 0) { Serial.println(F("Not recognised. Try b+, l-, r++, m--, e+, SAVE, RESET or GO.")); continue; }
+      if (step == 0) { Serial.println(bad); continue; }
       if (buf[0] == 'b') zeroUs[S_BASE] += step;
       else if (buf[0] == 'l') zeroUs[S_LEFT] += step;
       else if (buf[0] == 'r') zeroUs[S_RIGHT] += step;
       else if (buf[0] == 'e') zeroUs[S_ELBOW] += step;
-      else if (buf[0] == 'm') { zeroUs[S_LEFT] += MAIN_DIR * step; zeroUs[S_RIGHT] -= MAIN_DIR * step; }
-      else { Serial.println(F("Not recognised. Try b+, l-, r++, m--, e+, SAVE, RESET or GO.")); continue; }
+      else if (buf[0] == 'm') { zeroUs[S_LEFT] += dirMain * step; zeroUs[S_RIGHT] -= dirMain * step; }
+      else { Serial.println(bad); continue; }
       for (uint8_t i = 0; i < NS; i++) zeroUs[i] = constrain(zeroUs[i], SERVO_MIN_US, SERVO_MAX_US);
     }
     writePose(ZERO_POSE);
-    printZeros();
+    printSetup();
   }
 }
 
 // Hold the zero pose for ZERO_HOLD_MS. Any 3 letter word typed in that
-// time becomes the target word; ZERO opens the rest position set-up.
+// time becomes the target word; SETUP opens the servo set-up.
 void holdZeroAndReadWord() {
   Serial.print(F("Holding the rest position for "));
   Serial.print(ZERO_HOLD_MS / 1000);
   Serial.println(F(" seconds: base facing forward, main arm upright, second arm level."));
   Serial.print(F("The Morse word for Point E is ")); Serial.print(targetWord);
   Serial.println(F(". To change it, type a new 3-letter word now and press Enter."));
-  Serial.println(F("To adjust the rest position of the servos, type ZERO and press Enter."));
+  Serial.println(F("To set the rest position and directions of the servos, type SETUP and press Enter."));
   char buf[8];
   uint8_t n = 0;
   unsigned long start = millis();
@@ -949,7 +988,7 @@ void holdZeroAndReadWord() {
     char c = toupper(Serial.read());
     if (c == '\n' || c == '\r') {
       buf[min(n, (uint8_t)7)] = '\0';
-      if (strcmp(buf, "ZERO") == 0) { setRestPosition(); return; }
+      if (strcmp(buf, "SETUP") == 0) { servoSetup(); return; }
       if (n == 3 && validWord(buf)) {
         strcpy(targetWord, buf);
         for (uint8_t i = 0; i < 3; i++) EEPROM.update(i, targetWord[i]);
@@ -1106,7 +1145,7 @@ void setup() {
   // Load the rest positions and write them before attaching, so each servo
   // goes straight to its rest position on power up. The 500 to 2500 us range
   // lets every servo reach its full travel (the library default is 544 to 2400).
-  loadZeros();
+  loadSetup();
   writePose(ZERO_POSE);
   sBase.attach(PIN_BASE, SERVO_MIN_US, SERVO_MAX_US);
   sLeft.attach(PIN_MAIN_LEFT, SERVO_MIN_US, SERVO_MAX_US);
@@ -1121,7 +1160,8 @@ void setup() {
 
   ledCheck();
   loadWord();
-  printZeros();
+  printSetup();
+  if (!setupSaved) Serial.println(F("The servo set-up has not been saved on this board yet: type SETUP during the hold."));
   printPosition("the rest position");
   holdZeroAndReadWord();
   Serial.print(F("Using the Morse word ")); Serial.print(targetWord); Serial.println('.');

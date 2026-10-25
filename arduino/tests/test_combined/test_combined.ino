@@ -31,9 +31,9 @@ const uint8_t PIN_BASE = 2, PIN_MAIN_LEFT = 3, PIN_MAIN_RIGHT = 4, PIN_ELBOW = 5
 const uint8_t PIN_US_ECHO = 6, PIN_US_TRIG = 7, PIN_SOUND = A1;
 
 // ---------------- servo calibration ----------------
-const int8_t BASE_DIR = 1, MAIN_DIR = 1, ELBOW_DIR = 1;
+int8_t dirBase = 1, dirMain = 1, dirElbow = 1;   // loaded from EEPROM with the rest positions
 // Rest positions (pulse width in microseconds, 1500 = middle of the servo's
-// travel). Read from the EEPROM values saved by arm_controller's ZERO set-up,
+// travel). Read from the EEPROM values saved by arm_controller's SETUP,
 // so every sketch uses the same rest position. Same as arm_controller.ino.
 enum ServoId : uint8_t { S_BASE = 0, S_LEFT = 1, S_RIGHT = 2, S_ELBOW = 3, NS = 4 };
 const int   ZERO_US_DEFAULT[NS] = {1500, 1500, 1500, 1500};
@@ -43,11 +43,17 @@ const float BASE_GEAR_RATIO = 1.0;
 int zeroUs[NS];
 
 void loadZeros() {
-  bool saved = EEPROM.read(8) == 0x5A;
+  uint8_t mark = EEPROM.read(8);
+  bool saved = mark == 0x5A || mark == 0x5B;
   for (uint8_t i = 0; i < NS; i++) {
     int16_t v = ZERO_US_DEFAULT[i];
     if (saved) EEPROM.get(10 + 2 * i, v);
     zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
+  }
+  if (mark == 0x5B) {   // directions saved too (stored as 1 or 0xFF for -1)
+    dirBase  = EEPROM.read(18) == 0xFF ? -1 : 1;
+    dirMain  = EEPROM.read(19) == 0xFF ? -1 : 1;
+    dirElbow = EEPROM.read(20) == 0xFF ? -1 : 1;
   }
 }
 
@@ -121,11 +127,11 @@ bool tcsOk = false;
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
   cur.a[j] = rel;
-  if (j == J_BASE) sBase.writeMicroseconds(pulseAt(S_BASE, BASE_DIR * BASE_GEAR_RATIO * rel));
+  if (j == J_BASE) sBase.writeMicroseconds(pulseAt(S_BASE, dirBase * BASE_GEAR_RATIO * rel));
   else if (j == J_MAIN) {
-    sLeft.writeMicroseconds(pulseAt(S_LEFT, MAIN_DIR * rel));
-    sRight.writeMicroseconds(pulseAt(S_RIGHT, -MAIN_DIR * rel));
-  } else sElbow.writeMicroseconds(pulseAt(S_ELBOW, ELBOW_DIR * rel));
+    sLeft.writeMicroseconds(pulseAt(S_LEFT, dirMain * rel));
+    sRight.writeMicroseconds(pulseAt(S_RIGHT, -dirMain * rel));
+  } else sElbow.writeMicroseconds(pulseAt(S_ELBOW, dirElbow * rel));
 }
 
 void writePose(const Pose &p) { for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]); }
