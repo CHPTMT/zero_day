@@ -200,7 +200,7 @@ const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
 const uint16_t GESTURE_PAUSE_MS = 400;  // short stop at each end of a swing, so the shape reads clearly
 
-// Points E press: false = pusher moves straight down (main arm and second arm
+// Point E press: false = pusher moves straight down (main arm and second arm
 // together, the correct press). true = main arm only, a fallback if the
 // second arm servo is too weak to move.
 const bool     PRESS_MAIN_ARM_ONLY = false;
