@@ -5,9 +5,11 @@
  * Sequence (state machine, fully autonomous after reset):
  *   ZERO    all joints at relative 0 for 5 s (also the window to type the word)
  *   TASK 1  Points A and B: ultrasonic presence, YES / NO / BOX gesture
+ *           (YES nods the main arm, NO shakes the base, BOX uses both)
  *   TASK 2  Point C: colour sensor, the RGB LED shows the colour it sees
  *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
  *   TASK 4  Point E: press the button in Morse for the 3 letter word
+ *           (each press is the main arm leaning forward; the second arm holds still)
  *   FINISH  back to zero, print a summary
  * Everything the arm does and senses is printed to the Serial Monitor
  * (115200 baud), so the run can be followed without the LCD.
@@ -158,7 +160,7 @@ Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US}; 
 Station ST_B       = {"Point B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
 Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
-Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};  // 15 mm off the button
+Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  30, {0, 0, 0}, &TOOL_PUSHER};  // 30 mm off the button, so each press is a clear move
 Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
@@ -177,13 +179,15 @@ const uint16_t BASE_TURN_MS = 1500;
 const uint8_t  STEP_MS      = 20;    // one servo update per 20 ms servo frame
 const float    MAX_SPEED_DEG_S = 30;  // top joint speed. Lower it for slower, gentler moves
 const uint16_t SETTLE_MS    = 400;
+const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point this long before doing anything there
 const bool     USE_TRAVEL   = true;          // lift before turning the base
 const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
 const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
 
-// Gestures are kept small and slow so they read clearly and do not shake
-// the arm or knock it off its taught positions.
-const float    GESTURE_DEG     = 10;    // swing each way from the station pose (6 was too small to see)
+// Gestures use the two strongest joints, the main arm (two servos) and the
+// base, so they show clearly even if the second arm servo is weak. Slow
+// swings so they do not shake the arm.
+const float    GESTURE_DEG     = 15;    // swing each way (10 on the second arm was not visible)
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
 
@@ -201,19 +205,22 @@ const float REF_BLUE[3]  = {0.20, 0.32, 0.48};
 const uint16_t COLOUR_MIN_CLEAR = 30;
 const uint8_t  COLOUR_SAMPLES   = 3;
 const uint16_t COLOUR_LIVE_MS   = 2000;   // LED follows the sensor live at C for this long
+const uint8_t  COLOUR_STEADY    = 3;      // same colour this many readings in a row before the LED changes
+const uint16_t LED_CHECK_MS     = 1000;   // each colour shown alone at start up
 
 const uint16_t SOUND_TRIGGER   = 40;
 const uint16_t SOUND_AMP_MIN   = 40;
 const uint16_t SOUND_AMP_MAX   = 600;
 const uint16_t SOUND_WINDOW_MS = 150;
 const unsigned long SOUND_TIMEOUT_MS = 3000;
-const uint16_t SOUND_HOLD_MS   = 3000;
+const uint16_t SOUND_HOLD_MS   = 4000;   // time spent pointing at the indicator
 
 // Morse timing, two times slower than before to go easy on the arm. A dot is
 // 1 unit, a dash 3, the gap inside a letter 1 and between letters 3. The
 // receiver must split dots from dashes, and letters, at 2 units (1200 ms).
 const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
-const uint16_t PRESS_MOVE_MS  = 300;   // smooth move onto and off the button, instead of a snap
+const uint16_t PRESS_MOVE_MS  = 300;   // shortest move onto and off the button; the speed cap makes the
+                                       // 9 degree press take about 480 ms, and the gaps allow for that
 const int16_t  PRESS_EXTRA_MS = 0;
 
 // ======================================================================
@@ -349,19 +356,26 @@ bool toolIK(const Station &s, Pose &out) {
   return true;
 }
 
+// Lean only the main arm until the pusher tip is at height wantZ (mm above
+// the table). The tip drops as the main arm leans forward.
+void setTipHeight(Pose &p, float wantZ) {
+  float lo = REL_MIN[J_MAIN], hi = REL_MAX[J_MAIN], th, r, z;
+  for (uint8_t it = 0; it < 30; it++) {
+    p.a[J_MAIN] = (lo + hi) / 2;
+    toolPoint(p, TOOL_PUSHER, th, r, z);
+    if (z > wantZ) lo = p.a[J_MAIN]; else hi = p.a[J_MAIN];
+  }
+}
+
 // Point E fallback. If pressing needs the second arm past its limit, hold
 // the second arm at the limit and move only the main arm until the pusher
 // tip is at the right height (button top + gap). The tip then lands a little
 // short of the button centre instead of pressing early or not at all.
 bool pressAtLimit(const Station &s, Pose &out) {
   out.a[J_ELBOW] = REL_MAX[J_ELBOW];
-  float wantZ = s.z + s.standoff;          // pusher points straight down near the limit
-  float lo = REL_MIN[J_MAIN], hi = REL_MAX[J_MAIN], th, r, z;
-  for (uint8_t it = 0; it < 30; it++) {    // tip height falls as the main arm leans forward
-    out.a[J_MAIN] = (lo + hi) / 2;
-    toolPoint(out, *s.tool, th, r, z);
-    if (z > wantZ) lo = out.a[J_MAIN]; else hi = out.a[J_MAIN];
-  }
+  setTipHeight(out, s.z + s.standoff);     // pusher points straight down near the limit
+  float th, r, z;
+  toolPoint(out, *s.tool, th, r, z);
   Serial.print(F("Note: ")); Serial.print(s.name);
   Serial.print(F(" needs the second arm past its limit, so it is held at the limit. The pusher will land "));
   Serial.print(s.r - r, 0); Serial.println(F(" mm short of the button centre."));
@@ -430,6 +444,16 @@ void goToPose(const Pose &p, const char *label) {
   moveTo(p, MOVE_MS);
   delay(SETTLE_MS);
   printPosition(label);
+  delay(POINT_HOLD_MS);
+}
+
+// Lift back to the travel pose (main arm upright, second arm slightly up)
+// and hold, so the next point is a separate visit, e.g. A then B.
+void liftClear() {
+  Serial.println(F("Lifting clear before the next point."));
+  Pose lift = {{cur.a[J_BASE], TRAVEL_MAIN, TRAVEL_ELBOW}};
+  moveTo(lift, MOVE_MS);
+  delay(POINT_HOLD_MS / 2);
 }
 
 // Go to a station. If the maths fails the arm stays put and the task
@@ -442,40 +466,44 @@ void goToStation(const Station &s) {
 // ======================================================================
 // GESTURES
 // ======================================================================
-void gestureYes() {   // vertical: second arm up and down
-  Serial.println(F("Gesture: nodding YES (second arm up and down)."));
-  float c = cur.a[J_ELBOW];
+// Middle of a swing on joint j, moved in from a limit so both ends of the
+// swing are reachable (at B the base is 80 left, so NO swings about 75).
+float swingCentre(uint8_t j) {
+  return constrain(cur.a[j], REL_MIN[j] + GESTURE_DEG, REL_MAX[j] - GESTURE_DEG);
+}
+
+// Swing one joint either side of its centre, then return to where it was.
+void swingJoint(uint8_t j) {
+  float home = cur.a[j], c = swingCentre(j);
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
-    moveJoint(J_ELBOW, c + GESTURE_DEG, GESTURE_STEP_MS);
-    moveJoint(J_ELBOW, c - GESTURE_DEG, GESTURE_STEP_MS);
+    moveJoint(j, c + GESTURE_DEG, GESTURE_STEP_MS);
+    moveJoint(j, c - GESTURE_DEG, GESTURE_STEP_MS);
   }
-  moveJoint(J_ELBOW, c, GESTURE_STEP_MS);
+  moveJoint(j, home, GESTURE_STEP_MS);
+}
+
+void gestureYes() {   // vertical: main arm leans forward and back
+  Serial.println(F("Gesture: nodding YES (main arm leans forward and back)."));
+  swingJoint(J_MAIN);
 }
 
 void gestureNo() {    // horizontal: base left and right
-  Serial.println(F("Gesture: shaking NO (base left and right)."));
-  float c = cur.a[J_BASE];
-  for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
-    moveJoint(J_BASE, c + GESTURE_DEG, GESTURE_STEP_MS);
-    moveJoint(J_BASE, c - GESTURE_DEG, GESTURE_STEP_MS);
-  }
-  moveJoint(J_BASE, c, GESTURE_STEP_MS);
+  Serial.println(F("Gesture: shaking NO (base turns left and right)."));
+  swingJoint(J_BASE);
 }
 
-void gestureBox() {   // square traced with base and second arm
-  Serial.println(F("Gesture: drawing a BOX, because there was no object at A or B."));
-  float cb = cur.a[J_BASE], ce = cur.a[J_ELBOW];
-  const int8_t k[5][2] = {{-1, 1}, {1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
+void gestureBox() {   // square traced with the base and the main arm
+  Serial.println(F("Gesture: drawing a BOX with the base and main arm, because there was no object at A or B."));
+  Pose home = cur;
+  float cb = swingCentre(J_BASE), cm = swingCentre(J_MAIN);
+  const int8_t k[5][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
   for (uint8_t i = 0; i < 5; i++) {
     Pose p = cur;
     p.a[J_BASE] = cb + k[i][0] * GESTURE_DEG;
-    p.a[J_ELBOW] = ce + k[i][1] * GESTURE_DEG;
+    p.a[J_MAIN] = cm + k[i][1] * GESTURE_DEG;
     moveTo(p, GESTURE_STEP_MS * 2);
   }
-  Pose back = cur;
-  back.a[J_BASE] = cb;
-  back.a[J_ELBOW] = ce;
-  moveTo(back, GESTURE_STEP_MS * 2);
+  moveTo(home, GESTURE_STEP_MS * 2);
 }
 
 // ======================================================================
@@ -557,16 +585,39 @@ char classifyColour(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   return dg <= db ? 'G' : 'B';
 }
 
-// The LED follows whatever the sensor sees, a fresh reading every 50 ms.
+// The LED follows what the sensor sees, a fresh reading every 50 ms. It only
+// changes after COLOUR_STEADY matching readings, so it shows one solid colour
+// instead of flickering between two (which looks like a mix).
 void showColourLive(uint16_t ms) {
   if (!tcsOk) return;
   Serial.println(F("The RGB LED now follows what the colour sensor sees for 2 seconds."));
+  char shown = '-', last = '-';
+  uint8_t same = 0;
   unsigned long end = millis() + ms;
   while ((long)(end - millis()) > 0) {
     uint16_t r, g, b, c;
     tcs.getRawData(&r, &g, &b, &c);
-    setColourLed(classifyColour(r, g, b, c));
+    char k = classifyColour(r, g, b, c);
+    same = (k == last) ? same + 1 : 1;
+    last = k;
+    if (same >= COLOUR_STEADY && k != shown) { shown = k; setColourLed(k); }
   }
+}
+
+// Start up check: red, green and blue alone, one second each. Each must be a
+// pure colour. A mix (white, cyan, magenta, yellow) means LED_COMMON_ANODE is
+// set wrong for the LED; the wrong colour means two wires are swapped.
+void ledCheck() {
+  const char order[3] = {'R', 'G', 'B'};
+  const __FlashStringHelper *pin[3] = {F("D8"), F("D9"), F("D10")};
+  for (uint8_t i = 0; i < 3; i++) {
+    Serial.print(F("LED check: only ")); Serial.print(colourName(order[i]));
+    Serial.print(F(" should be lit now (")); Serial.print(pin[i]); Serial.println(F(")."));
+    setColourLed(order[i]);
+    delay(LED_CHECK_MS);
+  }
+  setColourLed('-');
+  Serial.println(F("LED check done. If you saw a mixed colour, flip LED_COMMON_ANODE."));
 }
 
 // Always returns R, G or B, so the LED always shows a colour.
@@ -647,6 +698,7 @@ const char *morseFor(char c) {
 }
 
 Pose pressPose, hoverPose;
+unsigned long pressRamp = PRESS_MOVE_MS;   // time one move onto or off the button really takes
 
 // One press: ease down onto the button, hold, ease back up. The button closes
 // about halfway down each move, so the hold is cut by one move time to keep
@@ -654,6 +706,7 @@ Pose pressPose, hoverPose;
 void pressFor(uint16_t ms) {
   digitalWrite(PIN_STATUS, HIGH);
   unsigned long ramp = moveTo(pressPose, PRESS_MOVE_MS);
+  pressRamp = ramp;
   delay(max(0L, (long)ms + PRESS_EXTRA_MS - (long)ramp));
   moveTo(hoverPose, PRESS_MOVE_MS);
   digitalWrite(PIN_STATUS, LOW);
@@ -661,7 +714,7 @@ void pressFor(uint16_t ms) {
 
 // Silence between presses, cut the same way (half a move up, half a move down).
 void pauseFor(uint16_t ms) {
-  delay(max(0L, (long)ms - (long)PRESS_MOVE_MS));
+  delay(max(0L, (long)ms - (long)pressRamp));
 }
 
 void sendMorseWord(const char *word) {
@@ -743,6 +796,7 @@ void task1() {
   printDistance(F("Point A"), distA, resultA);
   if (resultA) gestureYes();
 
+  liftClear();   // A and B are above each other, so make B a visibly separate visit
   goToStation(ST_B);
   distB = readDistanceCm();
   resultB = objectPresent(distB);
@@ -795,11 +849,18 @@ void task3() {
 
 void task4() {
   Serial.println(F("\nTASK 4 of 4: pressing the word in Morse code on the button at Point E."));
-  if (!stationPose(ST_E_HOVER, hoverPose) || !stationPose(ST_E_PRESS, pressPose)) {
+  if (!stationPose(ST_E_PRESS, pressPose)) {
     Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
   }
+  // Same pose, main arm leaned back until the pusher clears the button. Each
+  // press is then only the main arm leaning forward: its two servos are the
+  // strongest joint, and the second arm and base hold still.
+  hoverPose = pressPose;
+  setTipHeight(hoverPose, ST_E_HOVER.z + ST_E_HOVER.standoff);
   goToPose(hoverPose, "Point E (above the button)");
+  Serial.print(F("Each press leans the main arm ")); Serial.print(pressPose.a[J_MAIN] - hoverPose.a[J_MAIN], 1);
+  Serial.println(F(" degrees forward onto the button and back."));
   sendMorseWord(targetWord);
 }
 
@@ -847,6 +908,7 @@ void setup() {
   Serial.println(tcsOk ? F("Colour sensor: connected.")
                        : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires. Point C will light red by default."));
 
+  ledCheck();
   loadWord();
   printPosition("the rest position");
   holdZeroAndReadWord();

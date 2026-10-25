@@ -7,12 +7,13 @@
  * and does not hit a stand, before running arm_controller.
  *
  *   1. Zero pose, hold 5 s
- *   2. Point A, read distance, YES gesture
- *   3. Point B, read distance, NO gesture
- *   4. BOX gesture
+ *   2. Point A, read distance, YES gesture (main arm nods)
+ *   3. Point B, read distance, NO gesture (base shakes)
+ *   4. BOX gesture (base and main arm)
  *   5. Point C, read colour
  *   6. Point D, read sound level, then indicator low, middle, high
- *   7. Point E hover, one dot press, one dash press (600 / 1800 ms, eased on and off)
+ *   7. Point E hover, one dot press, one dash press (600 / 1800 ms, eased on and off),
+ *      each press made by the main arm leaning forward
  *   8. Back to zero
  * Type any key in the Serial Monitor (115200) to run it again.
  *
@@ -67,13 +68,14 @@ Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND
 Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
-Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};
+Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  30, {0, 0, 0}, &TOOL_PUSHER};  // 30 mm off the button, so each press is a clear move
 Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
+const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
-const float GESTURE_DEG = 10;            // same as arm_controller.ino
+const float GESTURE_DEG = 15;            // same as arm_controller.ino
 const uint8_t GESTURE_REPEATS = 2;
 const uint16_t GESTURE_STEP_MS = 900;
 
@@ -108,7 +110,7 @@ void writeJoint(uint8_t j, float rel) {
 
 void writePose(const Pose &p) { for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]); }
 
-void moveTo(const Pose &target, uint16_t ms) {
+unsigned long moveTo(const Pose &target, uint16_t ms) {
   Pose start = cur;
   // ms is the shortest time allowed. Long moves take longer, so that no joint
   // ever goes faster than MAX_SPEED_DEG_S (cosine easing peaks at pi/2 times
@@ -122,6 +124,7 @@ void moveTo(const Pose &target, uint16_t ms) {
     for (uint8_t j = 0; j < NJ; j++) writeJoint(j, start.a[j] + (target.a[j] - start.a[j]) * e);
     delay(STEP_MS);
   }
+  return dur;
 }
 
 void moveJoint(uint8_t j, float rel, uint16_t ms) {
@@ -179,19 +182,26 @@ bool toolIK(const Station &s, Pose &out) {
   return true;
 }
 
+// Lean only the main arm until the pusher tip is at height wantZ (mm above
+// the table). The tip drops as the main arm leans forward.
+void setTipHeight(Pose &p, float wantZ) {
+  float lo = REL_MIN[J_MAIN], hi = REL_MAX[J_MAIN], th, r, z;
+  for (uint8_t it = 0; it < 30; it++) {
+    p.a[J_MAIN] = (lo + hi) / 2;
+    toolPoint(p, TOOL_PUSHER, th, r, z);
+    if (z > wantZ) lo = p.a[J_MAIN]; else hi = p.a[J_MAIN];
+  }
+}
+
 // Point E fallback. If pressing needs the second arm past its limit, hold
 // the second arm at the limit and move only the main arm until the pusher
 // tip is at the right height (button top + gap). The tip then lands a little
 // short of the button centre instead of pressing early or not at all.
 bool pressAtLimit(const Station &s, Pose &out) {
   out.a[J_ELBOW] = REL_MAX[J_ELBOW];
-  float wantZ = s.z + s.standoff;          // pusher points straight down near the limit
-  float lo = REL_MIN[J_MAIN], hi = REL_MAX[J_MAIN], th, r, z;
-  for (uint8_t it = 0; it < 30; it++) {    // tip height falls as the main arm leans forward
-    out.a[J_MAIN] = (lo + hi) / 2;
-    toolPoint(out, *s.tool, th, r, z);
-    if (z > wantZ) lo = out.a[J_MAIN]; else hi = out.a[J_MAIN];
-  }
+  setTipHeight(out, s.z + s.standoff);     // pusher points straight down near the limit
+  float th, r, z;
+  toolPoint(out, *s.tool, th, r, z);
   Serial.print(F("Note: ")); Serial.print(s.name);
   Serial.print(F(" needs the second arm past its limit, so it is held at the limit. The pusher will land "));
   Serial.print(s.r - r, 0); Serial.println(F(" mm short of the button centre."));
@@ -259,6 +269,7 @@ void goToPose(const Pose &p, const char *label) {
   moveTo(p, MOVE_MS);
   delay(SETTLE_MS);
   printPosition(label);
+  delay(POINT_HOLD_MS);
 }
 
 bool goToStation(const Station &s) {
@@ -327,30 +338,33 @@ void printSound() {
 }
 
 // ---------------- gestures and presses ----------------
+// Middle of a swing on joint j, moved in from a limit so both ends are reachable.
+float swingCentre(uint8_t j) {
+  return constrain(cur.a[j], REL_MIN[j] + GESTURE_DEG, REL_MAX[j] - GESTURE_DEG);
+}
+
 void nod(uint8_t j, const __FlashStringHelper *name) {
   Serial.print(F("Gesture: ")); Serial.println(name);
-  float c = cur.a[j];
+  float home = cur.a[j], c = swingCentre(j);
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
     moveJoint(j, c + GESTURE_DEG, GESTURE_STEP_MS);
     moveJoint(j, c - GESTURE_DEG, GESTURE_STEP_MS);
   }
-  moveJoint(j, c, GESTURE_STEP_MS);
+  moveJoint(j, home, GESTURE_STEP_MS);
 }
 
 void box() {
-  Serial.println(F("Gesture: drawing a BOX."));
-  float cb = cur.a[J_BASE], ce = cur.a[J_ELBOW];
-  const int8_t k[5][2] = {{-1, 1}, {1, 1}, {1, -1}, {-1, -1}, {-1, 1}};
+  Serial.println(F("Gesture: drawing a BOX with the base and main arm."));
+  Pose home = cur;
+  float cb = swingCentre(J_BASE), cm = swingCentre(J_MAIN);
+  const int8_t k[5][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
   for (uint8_t i = 0; i < 5; i++) {
     Pose p = cur;
     p.a[J_BASE] = cb + k[i][0] * GESTURE_DEG;
-    p.a[J_ELBOW] = ce + k[i][1] * GESTURE_DEG;
+    p.a[J_MAIN] = cm + k[i][1] * GESTURE_DEG;
     moveTo(p, GESTURE_STEP_MS * 2);
   }
-  Pose back = cur;
-  back.a[J_BASE] = cb;
-  back.a[J_ELBOW] = ce;
-  moveTo(back, GESTURE_STEP_MS * 2);
+  moveTo(home, GESTURE_STEP_MS * 2);
 }
 
 void runAll() {
@@ -360,8 +374,10 @@ void runAll() {
   Serial.println(F("Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level."));
   delay(5000);
 
-  if (goToStation(ST_A)) { printDistance("Point A"); nod(J_ELBOW, F("nodding YES (second arm up and down).")); }
-  if (goToStation(ST_B)) { printDistance("Point B"); nod(J_BASE, F("shaking NO (base left and right).")); }
+  if (goToStation(ST_A)) { printDistance("Point A"); nod(J_MAIN, F("nodding YES (main arm leans forward and back).")); }
+  Serial.println(F("Lifting clear before Point B."));
+  { Pose lift = {{cur.a[J_BASE], 0, 15}}; moveTo(lift, MOVE_MS); delay(POINT_HOLD_MS / 2); }
+  if (goToStation(ST_B)) { printDistance("Point B"); nod(J_BASE, F("shaking NO (base turns left and right).")); }
   box();
   if (goToStation(ST_C)) printColour();
   if (goToStation(ST_D)) printSound();
@@ -370,12 +386,18 @@ void runAll() {
   goToStation(ST_IND_HI);  delay(1000);
 
   Pose hover, press;
-  if (stationPose(ST_E_HOVER, hover) && stationPose(ST_E_PRESS, press)) {
+  if (stationPose(ST_E_PRESS, press)) {
+    hover = press;   // same pose with the main arm leaned back off the button
+    setTipHeight(hover, ST_E_HOVER.z + ST_E_HOVER.standoff);
     goToPose(hover, "Point E (above the button)");
+    Serial.print(F("Each press leans the main arm ")); Serial.print(press.a[J_MAIN] - hover.a[J_MAIN], 1);
+    Serial.println(F(" degrees forward onto the button and back."));
     Serial.println(F("Short press on the button (600 ms, a Morse dot)."));
-    moveTo(press, 300); delay(300); moveTo(hover, 300); delay(900);   // same as a 600 ms dot in arm_controller
+    unsigned long ramp = moveTo(press, 300);   // same timing as a 600 ms dot in arm_controller
+    delay(max(0L, 600L - (long)ramp)); moveTo(hover, 300); delay(900);
     Serial.println(F("Long press on the button (1800 ms, a Morse dash)."));
-    moveTo(press, 300); delay(1500); moveTo(hover, 300); delay(900);  // same as a 1800 ms dash
+    ramp = moveTo(press, 300);                 // same as a 1800 ms dash
+    delay(max(0L, 1800L - (long)ramp)); moveTo(hover, 300); delay(900);
     printPosition("Point E (above the button)");
   }
 

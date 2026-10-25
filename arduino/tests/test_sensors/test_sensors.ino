@@ -155,7 +155,13 @@ void setup() {
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_BLUE, OUTPUT);
+  // LED check: each colour alone for a second. A mix means LED_COMMON_ANODE is wrong.
+  Serial.println(F("\nLED check: RED alone (D8), then GREEN alone (D9), then BLUE alone (D10)."));
+  showLed('R'); delay(1000);
+  showLed('G'); delay(1000);
+  showLed('B'); delay(1000);
   showLed('-');
+  Serial.println(F("If any of those was a mixed colour, flip LED_COMMON_ANODE at the top of this file."));
   tcsOk = tcs.begin();
   Serial.println(F("\nSENSOR TEST: reading all sensors twice a second. The arm does not move."));
   Serial.println(tcsOk ? F("Colour sensor: connected.") : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires and power."));

@@ -25,9 +25,15 @@ Joint angles from the rest position, and where the sensor in use ends up (height
 | C | 22 left | 33 forward | 41 down | Clear dip: second arm points steeply down, colour sensor 15 mm off the paper at 84 mm |
 | D | 1 right | 13 forward | 11 down | Arm nearly straight ahead, sound sensor 4 cm from the tap point at 266 mm |
 | Indicator | 20 right | 19 to 35 forward | 13 down to 38 up | Ultrasonic points at 150 mm (quiet) up to 350 mm (loud) |
-| E | 80 right | 21 forward | 30 up | Arm swung right, pusher 15 mm above the button, then presses down |
+| E | 80 right | 14 forward | 25 up | Arm swung right, pusher 30 mm above the button; each press leans the main arm 9 degrees forward |
 
-Gestures: one per run. YES (nod) if an object is at A, NO (shake) if one is at B, BOX if neither. Each swing is 10 degrees each way, 900 ms per swing, and the Serial Monitor prints a `Gesture:` line.
+Gestures use the two strongest joints so they show even if the second arm servo is weak. YES: the main arm leans forward and back. NO: the base turns left and right. BOX: the base and main arm trace a square. Each swing is 15 degrees each way, 900 ms per swing, and the Serial Monitor prints a `Gesture:` line.
+
+The arm stays still for 2 s at every point before it does anything there. Between A and B it lifts back up first, so the two visits are clearly separate.
+
+Each Morse press at E is the main arm leaning about 9 degrees forward from 30 mm above the button to 8 mm into it; the base and second arm hold still.
+
+At start up the RGB LED shows red, green and blue alone for 1 s each. Each must be a pure colour. A mix (white, cyan, magenta or yellow) means `LED_COMMON_ANODE` is set wrong for the LED.
 
 ## Testing at home without the stands
 

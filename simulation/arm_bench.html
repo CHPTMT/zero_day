@@ -380,11 +380,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 40,  tool: TOOLS.SND },
     INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60,  tool: TOOLS.US },
     INDHI:  { name: 'ind high',theta: 110, r: 275, z: 350, s: 60,  tool: TOOLS.US },
-    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 15,  tool: TOOLS.PUSH },
+    EH:     { name: 'E hover', theta: 170, r: 250, z: 300, s: 30,  tool: TOOLS.PUSH },
     EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
   };
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 10, GEST_MS = 900, GEST_REPS = 2;
+  var US_MAX = 20, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -829,7 +829,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
         var t = Math.min(1, (now - t0) / dur), e = 0.5 - 0.5 * Math.cos(Math.PI * t);
         for (var j = 0; j < 3; j++) cur[j] = clamp(start[j] + (p[j] - start[j]) * e, MIN[j], MAX[j]);
         render();
-        t < 1 ? requestAnimationFrame(step) : res();
+        t < 1 ? requestAnimationFrame(step) : res(dur * speed);
       }
       requestAnimationFrame(step);
     });
@@ -846,28 +846,44 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await moveTo(p, 1200, id);
     await sleep(400, id);
     posLine(label);
+    await sleep(HOLD, id);   // stays at each point, as POINT_HOLD_MS
   }
+  // Same as liftClear(): back to the travel pose between A and B
+  async function liftClear(id) {
+    log('Lifting clear before the next point.');
+    await moveTo([cur[0], 0, 15], 1200, id);
+    await sleep(HOLD / 2, id);
+  }
+  // Same as setTipHeight(): lean only the main arm until the pusher tip is at height want
+  function setTipHeight(p, want) {
+    var lo = MIN[1], hi = MAX[1];
+    for (var it = 0; it < 30; it++) { p[1] = (lo + hi) / 2; if (toolPt(p, TOOLS.PUSH).z > want) lo = p[1]; else hi = p[1]; }
+    return p;
+  }
+  // Point E: the press pose from the maths, the hover is the same pose with the main arm leaned back
+  function eHover(prs) { return setTipHeight(prs.slice(), ST.EH.z + ST.EH.s); }
   async function goToStation(st, id) {
     var p = stationPose(st);
     setTarget(st);
     if (p) await goToPose(p, st.name, id);
     return p;
   }
+  function swingCentre(j) { return clamp(cur[j], MIN[j] + GEST, MAX[j] - GEST); }
   async function nod(j, name, id) {
     log('Gesture: ' + name);
-    var c = cur[j];
+    var home = cur[j], c = swingCentre(j);
     for (var i = 0; i < GEST_REPS; i++) {
       var a = cur.slice(); a[j] = c + GEST; await moveTo(a, GEST_MS, id);
       a = cur.slice(); a[j] = c - GEST; await moveTo(a, GEST_MS, id);
     }
-    var b = cur.slice(); b[j] = c; await moveTo(b, GEST_MS, id);
+    var b = cur.slice(); b[j] = home; await moveTo(b, GEST_MS, id);
   }
   var boxWhy = false;
   async function box(id) {
-    log(boxWhy ? 'Gesture: drawing a BOX, because there was no object at A or B.' : 'Gesture: drawing a BOX.');
-    var cb = cur[0], ce = cur[2], k = [[-1, 1], [1, 1], [1, -1], [-1, -1], [-1, 1]];
-    for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cur[1], ce + k[i][1] * GEST], GEST_MS * 2, id);
-    await moveTo([cb, cur[1], ce], GEST_MS * 2, id);
+    log(boxWhy ? 'Gesture: drawing a BOX with the base and main arm, because there was no object at A or B.' : 'Gesture: drawing a BOX with the base and main arm.');
+    var home = cur.slice(), cb = swingCentre(0), cm = swingCentre(1), k = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]];
+    for (var i = 0; i < 5; i++) await moveTo([cb + k[i][0] * GEST, cm + k[i][1] * GEST, cur[2]], GEST_MS * 2, id);
+    await moveTo(home, GEST_MS * 2, id);
   }
 
   /* ============ simulated sensors ============ */
@@ -882,6 +898,12 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     leds = { R: false, G: false, B: false };
     log('Group 21 robotic arm: demonstration program starting.', 'h');
     log('Colour sensor: connected.');
+    for (var lc of ['R', 'G', 'B']) {
+      log('LED check: only ' + nameOf(lc) + ' should be lit now (' + { R: 'D8', G: 'D9', B: 'D10' }[lc] + ').');
+      leds = { R: lc === 'R', G: lc === 'G', B: lc === 'B' }; render(); await sleep(1000, id);
+    }
+    leds = { R: false, G: false, B: false }; render();
+    log('LED check done. If you saw a mixed colour, flip LED_COMMON_ANODE.');
     await moveTo(ZERO, 600, id);
     setTarget(null);
     posLine('zero');
@@ -898,12 +920,13 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var dA = distAt(obj === 'A' || obj === 'AB'), rA = dA >= 2 && dA <= US_MAX;
     log(distLine('Point A', dA, rA));
     setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
-    if (rA) await nod(2, 'nodding YES (second arm up and down).', id);
+    if (rA) await nod(1, 'nodding YES (main arm leans forward and back).', id);
+    await liftClear(id);
     await goToStation(ST.B, id);
     var dB = distAt(obj === 'B' || obj === 'AB'), rB = dB >= 2 && dB <= US_MAX;
     log(distLine('Point B', dB, rB));
     setLive('dist', 'B ' + (dB < 0 ? 'no echo' : f(dB) + ' cm') + (rB ? ' object' : ' empty'));
-    if (rB) await nod(0, 'shaking NO (base left and right).', id);
+    if (rB) await nod(0, 'shaking NO (base turns left and right).', id);
     if (!rA && !rB) { boxWhy = true; await box(id); boxWhy = false; }
 
     // Task 2
@@ -939,9 +962,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
     // Task 4
     log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
-    var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
+    var prs = stationPose(ST.EP), hov = eHover(prs), ramp = PRESS_MOVE;
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
+    log('Each press leans the main arm ' + f(prs[1] - hov[1]) + ' degrees forward onto the button and back.');
     log('Sending the word ' + word + ' in Morse code on the button.');
     for (var i = 0; i < word.length; i++) {
       var code = MORSE[word[i]], txt = '   Letter ' + word[i] + ':';
@@ -949,13 +973,13 @@ td.m { font-family: var(--mono); white-space: nowrap; }
         txt += code[c] === '.' ? ' short press' : ' long press';
         setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
         // eased onto the button, held, eased off (as pressFor() in arm_controller.ino)
-        btnOn = true; await moveTo(prs, PRESS_MOVE, id);
-        await sleep((code[c] === '.' ? UNIT : 3 * UNIT) - PRESS_MOVE, id);
+        btnOn = true; ramp = await moveTo(prs, PRESS_MOVE, id);
+        await sleep(Math.max(0, (code[c] === '.' ? UNIT : 3 * UNIT) - ramp), id);
         await moveTo(hov, PRESS_MOVE, id); btnOn = false; render();
-        if (c < code.length - 1) await sleep(UNIT - PRESS_MOVE, id);
+        if (c < code.length - 1) await sleep(Math.max(0, UNIT - ramp), id);
       }
       log(txt);
-      if (i < word.length - 1) await sleep(3 * UNIT - PRESS_MOVE, id);
+      if (i < word.length - 1) await sleep(3 * UNIT - ramp, id);
     }
     await sleep(8 * UNIT, id);
     log('Finished sending ' + word + '. The receiver should now show it on its screen.');
@@ -1041,8 +1065,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     posLine('zero'); log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
     await sleep(5000, id);
     function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor.' : ': the ultrasonic sensor measures ' + f(d) + ' cm.')); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
-    if (await goToStation(ST.A, id)) { dist('A'); await nod(2, 'nodding YES (second arm up and down).', id); }
-    if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'shaking NO (base left and right).', id); }
+    if (await goToStation(ST.A, id)) { dist('A'); await nod(1, 'nodding YES (main arm leans forward and back).', id); }
+    log('Lifting clear before Point B.'); await moveTo([cur[0], 0, 15], 1200, id); await sleep(HOLD / 2, id);
+    if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'shaking NO (base turns left and right).', id); }
     await box(id);
     if (await goToStation(ST.C, id)) {
       var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
@@ -1060,13 +1085,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
       await goToStation(k, id); await sleep(1000, id);
     }
-    var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
+    var prs = stationPose(ST.EP), hov = eHover(prs), rp;
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
+    log('Each press leans the main arm ' + f(prs[1] - hov[1]) + ' degrees forward onto the button and back.');
     log('Short press on the button (600 ms, a Morse dot).'); setLive('morse', 'short press');
-    btnOn = true; await moveTo(prs, 300, id); await sleep(300, id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
+    btnOn = true; rp = await moveTo(prs, 300, id); await sleep(Math.max(0, 600 - rp), id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
     log('Long press on the button (1800 ms, a Morse dash).'); setLive('morse', 'long press');
-    btnOn = true; await moveTo(prs, 300, id); await sleep(1500, id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
+    btnOn = true; rp = await moveTo(prs, 300, id); await sleep(Math.max(0, 1800 - rp), id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
     posLine('E hover');
     setTarget(null);
     await goToPose(ZERO, 'zero', id);
@@ -1109,6 +1135,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     el.addEventListener('click', function () {
       run(async function (id) {
         if (!b[1]) { setTarget(null); await goToPose(ZERO, 'zero', id); }
+        else if (b[1] === ST.EH) { var pp = stationPose(ST.EP); setTarget(ST.EH, 'E button'); if (pp) await goToPose(eHover(pp), 'E hover', id); }
         else await goToStation(b[1], id);
       }, 'Moving to ' + b[0]);
     });
@@ -1118,7 +1145,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     el.addEventListener('click', function () {
       var g = el.getAttribute('data-g');
       run(function (id) {
-        return g === 'yes' ? nod(2, 'nodding YES (second arm up and down).', id) : g === 'no' ? nod(0, 'shaking NO (base left and right).', id) : box(id);
+        return g === 'yes' ? nod(1, 'nodding YES (main arm leans forward and back).', id) : g === 'no' ? nod(0, 'shaking NO (base turns left and right).', id) : box(id);
       }, 'Gesture');
     });
   });
