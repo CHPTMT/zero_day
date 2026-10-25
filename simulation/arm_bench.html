@@ -805,8 +805,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       setTimeout(function () { id !== runId ? rej(new Stop()) : res(); }, ms / speed);
     });
   }
+  var MAX_SPEED = 30;   // deg/s, same as MAX_SPEED_DEG_S in the sketches
   function moveTo(p, ms, id) {
-    var start = cur.slice(), dur = ms / speed, t0 = performance.now();
+    var start = cur.slice(), far = 0;
+    for (var q = 0; q < 3; q++) far = Math.max(far, Math.abs(p[q] - start[q]));
+    var dur = Math.max(ms, far * 1571 / MAX_SPEED) / speed, t0 = performance.now();
     return new Promise(function (res, rej) {
       function step(now) {
         if (id !== runId) return rej(new Stop());
@@ -960,7 +963,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   // test_servos moves 1 degree every 20 ms
   async function glide(j, to, id) {
     var p = cur.slice(); p[j] = clamp(to, MIN[j], MAX[j]);
-    await moveTo(p, Math.max(60, Math.abs(p[j] - cur[j]) * 20), id);
+    await moveTo(p, Math.max(60, Math.abs(p[j] - cur[j]) * 40), id);   // 25 deg/s like test_servos
   }
   async function testServos(id) {
     setTarget(null);

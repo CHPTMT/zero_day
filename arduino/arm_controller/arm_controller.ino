@@ -172,7 +172,8 @@ const float IND_STANDOFF = 60;
 // ======================================================================
 const uint16_t MOVE_MS      = 1200;
 const uint16_t BASE_TURN_MS = 1500;
-const uint8_t  STEP_MS      = 15;
+const uint8_t  STEP_MS      = 20;    // one servo update per 20 ms servo frame
+const float    MAX_SPEED_DEG_S = 30;  // top joint speed. Lower it for slower, gentler moves
 const uint16_t SETTLE_MS    = 400;
 const bool     USE_TRAVEL   = true;          // lift before turning the base
 const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
@@ -234,6 +235,15 @@ int  resultLevel = 0;
 // ======================================================================
 int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
 
+// Servo pulse for an angle, keeping fractions of a degree. write() only moves
+// in whole degrees, which makes slow moves step visibly; writeMicroseconds()
+// moves in about 0.1 degree steps. 544 and 2400 us are the Servo library's own
+// 0 and 180 degree pulses, so the angles match what write() would give.
+int pulseFor(float deg) {
+  deg = constrain(deg, 0.0, 180.0);
+  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+}
+
 // Set one joint to a relative angle. The main arm writes both servos in
 // opposite directions so they twist the shaft together.
 void writeJoint(uint8_t j, float rel) {
@@ -241,14 +251,14 @@ void writeJoint(uint8_t j, float rel) {
   cur.a[j] = rel;
   switch (j) {
     case J_BASE:
-      sBase.write(rawClamp(SERVO_ZERO_BASE + BASE_DIR * rel));
+      sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
       break;
     case J_MAIN:
-      sLeft.write(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * rel));
-      sRight.write(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+      sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
+      sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
       break;
     case J_ELBOW:
-      sElbow.write(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
+      sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
       break;
   }
 }
@@ -260,7 +270,13 @@ void writePose(const Pose &p) {
 // Smooth move of all joints together with cosine easing.
 void moveTo(const Pose &target, uint16_t ms) {
   Pose start = cur;
-  uint16_t steps = max(1, ms / STEP_MS);
+  // ms is the shortest time allowed. Long moves take longer, so that no joint
+  // ever goes faster than MAX_SPEED_DEG_S (cosine easing peaks at pi/2 times
+  // the average speed, hence the 1.571).
+  float far = 0;
+  for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
+  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / MAX_SPEED_DEG_S));
+  uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
     for (uint8_t j = 0; j < NJ; j++) writeJoint(j, start.a[j] + (target.a[j] - start.a[j]) * e);

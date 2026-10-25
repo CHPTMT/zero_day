@@ -71,7 +71,8 @@ Station ST_E_HOVER = {"E hover",170, 250, 300,  15, {0, 0, 0}, &TOOL_PUSHER};
 Station ST_E_PRESS = {"E press",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
-const uint8_t STEP_MS = 15;
+const uint8_t STEP_MS = 20;
+const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
 const float GESTURE_DEG = 6;            // same as arm_controller.ino
 const uint8_t GESTURE_REPEATS = 2;
 const uint16_t GESTURE_STEP_MS = 900;
@@ -86,21 +87,36 @@ bool tcsOk = false;
 // ---------------- servos ----------------
 int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
 
+// Servo pulse for an angle, keeping fractions of a degree. write() only moves
+// in whole degrees, which makes slow moves step visibly; writeMicroseconds()
+// moves in about 0.1 degree steps. 544 and 2400 us are the Servo library's own
+// 0 and 180 degree pulses, so the angles match what write() would give.
+int pulseFor(float deg) {
+  deg = constrain(deg, 0.0, 180.0);
+  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+}
+
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
   cur.a[j] = rel;
-  if (j == J_BASE) sBase.write(rawClamp(SERVO_ZERO_BASE + BASE_DIR * rel));
+  if (j == J_BASE) sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
   else if (j == J_MAIN) {
-    sLeft.write(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * rel));
-    sRight.write(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
-  } else sElbow.write(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
+    sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
+    sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+  } else sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
 }
 
 void writePose(const Pose &p) { for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]); }
 
 void moveTo(const Pose &target, uint16_t ms) {
   Pose start = cur;
-  uint16_t steps = max(1, ms / STEP_MS);
+  // ms is the shortest time allowed. Long moves take longer, so that no joint
+  // ever goes faster than MAX_SPEED_DEG_S (cosine easing peaks at pi/2 times
+  // the average speed, hence the 1.571).
+  float far = 0;
+  for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
+  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / MAX_SPEED_DEG_S));
+  uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
     for (uint8_t j = 0; j < NJ; j++) writeJoint(j, start.a[j] + (target.a[j] - start.a[j]) * e);

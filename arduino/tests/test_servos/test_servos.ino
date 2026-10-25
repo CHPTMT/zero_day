@@ -41,24 +41,34 @@ float cur[NJ] = {0, 0, 0};
 
 int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
 
+// Servo pulse for an angle, keeping fractions of a degree. write() only moves
+// in whole degrees, which makes slow moves step visibly; writeMicroseconds()
+// moves in about 0.1 degree steps. 544 and 2400 us are the Servo library's own
+// 0 and 180 degree pulses, so the angles match what write() would give.
+int pulseFor(float deg) {
+  deg = constrain(deg, 0.0, 180.0);
+  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+}
+
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
   cur[j] = rel;
   if (j == J_BASE) {
-    sBase.write(rawClamp(SERVO_ZERO_BASE + BASE_DIR * rel));
+    sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
   } else if (j == J_MAIN) {
-    sLeft.write(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * rel));
-    sRight.write(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+    sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
+    sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
   } else {
-    sElbow.write(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
+    sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
   }
 }
 
-// One degree every 20 ms, so the sweep is slow and safe.
+// Half a degree every 20 ms (25 deg/s), in fine pulse steps, so the sweep is
+// slow and smooth.
 void glide(uint8_t j, float target) {
   target = constrain(target, REL_MIN[j], REL_MAX[j]);
-  while (fabs(cur[j] - target) > 0.5) {
-    writeJoint(j, cur[j] + (target > cur[j] ? 1 : -1));
+  while (fabs(cur[j] - target) > 0.25) {
+    writeJoint(j, cur[j] + (target > cur[j] ? 0.5 : -0.5));
     delay(20);
   }
   writeJoint(j, target);
