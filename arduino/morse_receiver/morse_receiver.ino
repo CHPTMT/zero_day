@@ -29,7 +29,7 @@
 
 #include <Wire.h>
 #if LCD_I2C
-#include <LiquidCrystal_I2C.h>
+#include "src/LiquidCrystal_I2C.h"   // bundled in src/, nothing to install
 LiquidCrystal_I2C lcd(0x27, 16, 2);   // try 0x3F if the screen stays blank
 #else
 #include <LiquidCrystal.h>

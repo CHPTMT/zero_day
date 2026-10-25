@@ -19,7 +19,7 @@
  */
 
 #include <Wire.h>
-#include <Adafruit_TCS34725.h>
+#include "src/Adafruit_TCS34725.h"   // bundled in src/, nothing to install
 
 const uint8_t PIN_US_ECHO = 6, PIN_US_TRIG = 7, PIN_SOUND = A1;
 const uint8_t PIN_LED_RED = 8, PIN_LED_GREEN = 9, PIN_LED_BLUE = 10;

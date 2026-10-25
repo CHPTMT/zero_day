@@ -45,7 +45,7 @@
 #include <Servo.h>
 #include <Wire.h>
 #include <EEPROM.h>
-#include <Adafruit_TCS34725.h>
+#include "src/Adafruit_TCS34725.h"   // bundled in src/, nothing to install
 
 // ======================================================================
 // TASK SWITCHES

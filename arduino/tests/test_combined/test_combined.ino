@@ -22,7 +22,7 @@
 
 #include <Servo.h>
 #include <Wire.h>
-#include <Adafruit_TCS34725.h>
+#include "src/Adafruit_TCS34725.h"   // bundled in src/, nothing to install
 
 // ---------------- pins ----------------
 const uint8_t PIN_BASE = 2, PIN_MAIN_LEFT = 3, PIN_MAIN_RIGHT = 4, PIN_ELBOW = 5;

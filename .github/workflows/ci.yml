@@ -16,6 +16,4 @@ jobs:
             - arduino
           libraries: |
             - name: Servo
-            - name: Adafruit TCS34725
-            - name: LiquidCrystal I2C
             - name: LiquidCrystal
