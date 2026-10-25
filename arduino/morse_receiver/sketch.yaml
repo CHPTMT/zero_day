@@ -1,0 +1,4 @@
+# Opens this sketch with the board already selected (Arduino IDE 2 / arduino-cli).
+# No port is set: the receiver is a second Uno with its own COM number.
+# Pick it in Tools > Port, or add a line such as  default_port: COM9
+default_fqbn: arduino:avr:uno

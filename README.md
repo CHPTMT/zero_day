@@ -14,7 +14,7 @@ Demonstration: Monday 26 October 2026, NWE Lab, Session 11 (12:00 to 12:10), Sta
 | `arduino/tests/test_sensors` | Uno 1 | Distance, colour and sound together, with colour and tap calibration |
 | `arduino/tests/test_combined` | Uno 1 | Every station, gesture and press in order, printing angles and readings |
 
-Each sketch sits in a folder with the same name, which the Arduino IDE requires. Libraries: Servo, Adafruit TCS34725, LiquidCrystal I2C (receiver only).
+Each sketch sits in a folder with the same name, which the Arduino IDE requires. Each folder also has a `sketch.yaml` that selects the board (Arduino UNO) and, for the arm sketches, the port (COM8) when the sketch is opened in Arduino IDE 2. If the laptop gives the Uno a different COM number, change `default_port` in that file or pick the port in Tools > Port. Libraries: Servo, Adafruit TCS34725, LiquidCrystal I2C (receiver only).
 
 ## Arm
 
