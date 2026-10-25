@@ -62,7 +62,7 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+.wrap { max-width: 1840px; margin: 0 auto; display: grid; gap: 14px; }
 h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.05; margin: 0; text-wrap: balance; text-transform: uppercase; letter-spacing: 0.01em; }
 h1 { font-size: clamp(2.2rem, 7vw, 3.2rem); }
 h2 { font-size: 1.35rem; }
@@ -82,7 +82,28 @@ button, select, input { font: inherit; }
 .tab { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 9px 16px; border: 1px solid transparent; border-bottom: 0; background: none; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
 .tab[aria-selected="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
 .panel { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
-.motion { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.motion { display: grid; gap: 14px; }
+.views3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.view h2 { font-size: 1.1rem; }
+.view .cap { margin-top: 2px; }
+.live { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 10px; padding: 10px 12px; }
+.lv { display: grid; gap: 1px; min-width: 0; }
+.lv b { font-family: var(--mono); font-size: 0.62rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lv span { font-family: var(--mono); font-size: 0.86rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lamps { display: flex; gap: 6px; align-items: center; }
+.pinned { display: grid; gap: 10px; }
+/* Wide, tall screens: keep the three views and every live value in sight while the controls scroll under them */
+@media (min-width: 1300px) and (min-height: 760px) {
+  .pinned { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 6px 8px; }
+  .view svg { max-height: 34vh; }
+  .view .cap { display: none; }
+  .live { padding: 8px 12px; }
+}
+.lower3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr); gap: 14px; align-items: start; }
+.termwrap { min-width: 0; }
+.notes summary { cursor: pointer; font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.notes[open] summary { margin-bottom: 8px; }
+.notes .cap { max-width: 110ch; }
 .views { display: grid; gap: 16px; min-width: 0; }
 .side { display: grid; gap: 16px; min-width: 0; }
 svg { display: block; width: 100%; height: auto; }
@@ -112,7 +133,7 @@ svg { display: block; width: 100%; height: auto; }
 .dot.on-g { background: var(--led-g); }
 .dot.on-b { background: var(--led-b); }
 .dot.on-btn { background: var(--accent); }
-.term { background: var(--term-bg); color: var(--term-ink); font-family: var(--mono); font-size: 0.76rem; line-height: 1.45; height: 330px; overflow: auto; padding: 10px 12px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+.term { background: var(--term-bg); color: var(--term-ink); font-family: var(--mono); font-size: 0.76rem; line-height: 1.45; height: 470px; overflow: auto; padding: 10px 12px; margin: 0; white-space: pre-wrap; word-break: break-word; }
 .term .h { color: #8fe0bf; }
 .term .d { color: var(--term-dim); }
 .termbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--term-bg); color: var(--term-dim); font-family: var(--mono); font-size: 0.7rem; padding: 6px 12px; border-bottom: 1px solid #22332c; }
@@ -133,7 +154,8 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 .desc { font-size: 0.9rem; color: var(--muted); max-width: 60ch; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .note { border-left: 4px solid var(--accent); background: var(--tint); padding: 10px 12px; font-size: 0.92rem; }
-@media (max-width: 900px) { .motion { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1250px) { .views3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lower3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .termwrap { grid-column: 1 / -1; } }
+@media (max-width: 800px) { .views3, .lower3 { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .cond { grid-template-columns: minmax(0, 1fr); } .raw { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
@@ -156,43 +178,46 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
   <!-- ================= MOTION ================= -->
   <section id="motion" class="motion" role="tabpanel" aria-labelledby="tab-motion">
-    <div class="views">
-      <div class="panel">
+    <div class="pinned">
+    <div class="views3">
+      <div class="panel view">
         <h2>Side view</h2>
         <svg id="sideView" viewBox="0 0 640 470" role="img" aria-label="Side view of the arm in the plane it is facing"></svg>
-        <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The grey strip past the arm end is the sensor array along the arm's axis: ultrasonic at the arm end, sound sensor 42 mm out (blue), colour sensor 83 mm out at the tip (red). Their 45 mm sideways offsets do not show here. The red bar is the 30 mm button pusher, hanging below the array at the arm end and pointing straight down when the second arm is level. The dashed line is the standoff from whichever sensor is aimed at the current target.</p>
+        <p class="cap">In the plane the base faces. mm from the base axis and the table.</p>
       </div>
-      <div class="panel">
+      <div class="panel view">
         <h2>Top view of the arm</h2>
         <svg id="topView" viewBox="0 0 640 450" role="img" aria-label="The arm seen from above, pointing towards you"></svg>
-        <p class="cap">Looking down on the arm with it pointing towards you, as if you stand in front of the machine. Your left and right match the labels. To scale for the current pose. The sideways thickness of each arm, seen from above, is estimated from the photos (main arm 30 mm, second arm 20 mm); the 50 mm and 40 mm side faces are in the side view.</p>
+        <p class="cap">From above, arm pointing at you standing in front of it.</p>
       </div>
-      <div class="panel">
+      <div class="panel view">
         <h2>Plan view</h2>
         <svg id="planView" viewBox="0 0 640 350" role="img" aria-label="Top view of the half circle workspace with the stations"></svg>
-        <p class="cap">400 mm half circle from the brief, seen from behind the arm as on the base map: A and B on the left, E on the right. The bold line is where the arm faces. Black dot: ultrasonic. Red: colour sensor, 45 mm to your right facing the machine. Blue: sound sensor, 45 mm to your left.</p>
+        <p class="cap">Workspace from behind the arm, as on the base map: A and B left, E right.</p>
       </div>
     </div>
 
-      <div class="panel">
-        <h2>Sensor board</h2>
-        <div class="scroll">
-          <table>
-            <thead><tr><th>Part</th><th>On the board</th><th>Aimed at</th><th>Gap</th><th>Works over</th></tr></thead>
-            <tbody>
-              <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">100 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
-              <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
-              <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
-              <tr><td>Button pusher</td><td class="m">30 mm bar under the arm end, tip 50 below its centre line</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length. If E ever needs the 2nd arm past +45, the arm holds +45 and sets the pusher height instead.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="cap">Right and left as seen standing in front of the machine, facing it.</p>
-      </div>
+    <div class="panel live" aria-live="off">
+      <div class="lv"><b>State</b><span id="lvState">Idle</span></div>
+      <div class="lv"><b>Target</b><span id="lvTarget">none</span></div>
+      <div class="lv"><b>Base</b><span id="lvBase">0.0</span></div>
+      <div class="lv"><b>Main arm</b><span id="lvMain">0.0</span></div>
+      <div class="lv"><b>2nd arm</b><span id="lvElbow">0.0</span></div>
+      <div class="lv"><b>Raw D2 / D3 / D4 / D5</b><span id="lvRaw">90 / 90 / 90 / 90</span></div>
+      <div class="lv"><b>Ultrasonic θ r z</b><span id="lvUS">-</span></div>
+      <div class="lv"><b>Colour θ r z</b><span id="lvRGB">-</span></div>
+      <div class="lv"><b>Sound θ r z</b><span id="lvSND">-</span></div>
+      <div class="lv"><b>Pusher tip θ r z</b><span id="lvPUSH">-</span></div>
+      <div class="lv"><b>Distance</b><span id="lvDist">-</span></div>
+      <div class="lv"><b>Colour read</b><span id="lvCol">-</span></div>
+      <div class="lv"><b>Sound level</b><span id="lvSnd">-</span></div>
+      <div class="lv"><b>Morse</b><span id="lvMorse">-</span></div>
+      <div class="lv"><b>LEDs / button</b><span class="lamps"><span class="dot" id="ledR"></span><span class="dot" id="ledG"></span><span class="dot" id="ledB"></span><span class="dot" id="btnLamp"></span></span></div>
+    </div>
     </div>
 
-    <div class="side">
-      <div class="panel">
+    <div class="lower3">
+      <div class="panel stack">
         <p class="group-h">Joints (relative degrees, 0 = zero pose)</p>
         <div class="ctl">
           <label for="jBase">Base<small>+90 left towards A and B, -90 right towards E</small></label>
@@ -216,9 +241,6 @@ td.m { font-family: var(--mono); white-space: nowrap; }
           <div><b>2nd D5</b><span id="rE">90</span></div>
         </div>
         <p class="cap">Raw values assume every SERVO_ZERO is 90 and every DIR is 1. The two main arm servos always move in opposite directions.</p>
-      </div>
-
-      <div class="panel stack">
         <div>
           <p class="group-h">Go to</p>
           <div class="row" id="stationBtns"></div>
@@ -272,20 +294,32 @@ td.m { font-family: var(--mono); white-space: nowrap; }
           <button class="btn stop" id="stopBtn" type="button" disabled>Stop</button>
           <button class="btn" id="speedBtn" type="button">Speed 1x</button>
         </div>
-        <div class="status">
-          <span class="lamp"><span class="dot" id="ledR"></span>Red D8</span>
-          <span class="lamp"><span class="dot" id="ledG"></span>Green D9</span>
-          <span class="lamp"><span class="dot" id="ledB"></span>Blue D10</span>
-          <span class="lamp"><span class="dot" id="btnLamp"></span>Button</span>
-          <span id="stateTxt">Idle</span>
-        </div>
+        <div class="status"><span id="stateTxt">Idle</span><span>LED lights: red D8, green D9, blue D10, then the button</span></div>
       </div>
 
-      <div>
+      <div class="termwrap">
         <div class="termbar"><span>Serial Monitor, 115200 baud</span><button class="btn" id="clearBtn" type="button" style="padding:3px 8px">Clear</button></div>
         <pre class="term" id="term" aria-live="polite"></pre>
       </div>
     </div>
+
+    <details class="panel notes">
+      <summary>Notes on the views and the sensor board</summary>
+      <p class="cap"><b>Side view.</b> The grey strip past the arm end is the sensor array along the arm's axis: ultrasonic at the arm end, sound sensor 42 mm out (blue), colour sensor 83 mm out at the tip (red). Their 45 mm sideways offsets do not show here. The red bar is the 30 mm button pusher under the arm end. The dashed line is the gap from whichever sensor is aimed at the current target.</p>
+      <p class="cap"><b>Top view.</b> To scale for the current pose. The sideways thickness of each arm seen from above is estimated from the photos (main arm 30 mm, second arm 20 mm); the 50 mm and 40 mm side faces show in the side view.</p>
+      <p class="cap"><b>Plan view.</b> 400 mm half circle from the brief. Black dot: ultrasonic. Red: colour sensor, 45 mm to your right facing the machine. Blue: sound sensor, 45 mm to your left.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Part</th><th>On the board</th><th>Aimed at</th><th>Gap</th><th>Works over</th></tr></thead>
+            <tbody>
+              <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">100 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
+              <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
+              <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
+              <tr><td>Button pusher</td><td class="m">30 mm bar under the arm end, tip 50 below its centre line</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length. If E ever needs the 2nd arm past +45, the arm holds +45 and sets the pusher height instead.</td></tr>
+            </tbody>
+          </table>
+        </div>
+    </details>
   </section>
 
   <!-- ================= PARTS ================= -->
@@ -358,6 +392,8 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   var cur = [0, 0, 0];
   var target = null;   // {theta, r, z} being aimed at
   var leds = { R: false, G: false, B: false }, btnOn = false;
+  var live = { dist: '-', col: '-', snd: '-', morse: '-' };   // latest sensor readings for the live strip
+  function setLive(k, v) { live[k] = v; renderLive(); }
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
@@ -713,8 +749,21 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     $('pAll').innerHTML = h;
   }
 
+  function tri(q) { return f(q.theta, 0) + '° ' + f(q.r, 0) + ' ' + f(q.z, 0); }
+  function renderLive() {
+    var k = fk(cur);
+    $('lvState').textContent = $('stateTxt').textContent;
+    $('lvTarget').textContent = target ? target.label : 'none';
+    $('lvBase').textContent = (cur[0] > 0 ? '+' : '') + f(cur[0]);
+    $('lvMain').textContent = (cur[1] > 0 ? '+' : '') + f(cur[1]);
+    $('lvElbow').textContent = (cur[2] > 0 ? '+' : '') + f(cur[2]);
+    $('lvRaw').textContent = raw(90 + cur[0]) + ' / ' + raw(90 + cur[1]) + ' / ' + raw(90 - cur[1]) + ' / ' + raw(90 + cur[2]);
+    $('lvUS').textContent = tri(k.us); $('lvRGB').textContent = tri(k.rgb); $('lvSND').textContent = tri(k.snd); $('lvPUSH').textContent = tri(k.pu);
+    $('lvDist').textContent = live.dist; $('lvCol').textContent = live.col; $('lvSnd').textContent = live.snd; $('lvMorse').textContent = live.morse;
+  }
+
   function render() {
-    drawSide(); drawPlan(); drawTop();
+    drawSide(); drawPlan(); drawTop(); renderLive();
     var ids = ['jBase', 'jMain', 'jElbow'], vids = ['vBase', 'vMain', 'vElbow'];
     for (var j = 0; j < 3; j++) {
       if (document.activeElement !== $(ids[j])) $(ids[j]).value = Math.round(cur[j]);
@@ -831,10 +880,12 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await goToStation(ST.A, id);
     var dA = distAt(obj === 'A' || obj === 'AB'), rA = dA >= 2 && dA <= US_MAX;
     log('[A] distance ' + f(dA) + (rA ? ' cm -> OBJECT' : ' cm -> empty'));
+    setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
     if (rA) await nod(2, 'YES (up / down)', id);
     await goToStation(ST.B, id);
     var dB = distAt(obj === 'B' || obj === 'AB'), rB = dB >= 2 && dB <= US_MAX;
     log('[B] distance ' + f(dB) + (rB ? ' cm -> OBJECT' : ' cm -> empty'));
+    setLive('dist', 'B ' + (dB < 0 ? 'no echo' : f(dB) + ' cm') + (rB ? ' object' : ' empty'));
     if (rB) await nod(0, 'NO (left / right)', id);
     if (!rA && !rB) await box(id);
 
@@ -846,6 +897,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     log('[colour] temp ' + TEMP[col] + ' K  lux ' + Math.round(pr[1] * 0.3) + '  primary ' + nameOf(col));
     log('[colour] normalised ' + f(pr[0] / s, 3) + ' ' + f(pr[1] / s, 3) + ' ' + f(pr[2] / s, 3));
     log('[C] colour -> ' + nameOf(col));
+    setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
     leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
 
     // Task 3
@@ -856,6 +908,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var amp = tap >= 40 ? tap : -1;
     var lv = amp < 0 ? 0 : clamp((amp - AMP_MIN) / (AMP_MAX - AMP_MIN), 0, 1);
     log('[D] amplitude ' + amp + ' -> level ' + Math.round(lv * 100) + '%');
+    setLive('snd', (amp < 0 ? 'no tap' : amp) + ', ' + Math.round(lv * 100) + '%');
     var zp = IND.zLo + lv * (IND.zHi - IND.zLo);
     var ind = { name: 'indicator', theta: IND.theta, r: IND.r, z: zp, s: IND.s, tool: TOOLS.US };
     var p = stationPose(ind);
@@ -874,6 +927,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       var code = MORSE[word[i]], txt = '[morse] ' + word[i] + '  ';
       for (var c = 0; c < code.length; c++) {
         txt += code[c] === '.' ? 'dot ' : 'DASH ';
+        setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
         snap(prs); btnOn = true; render();
         await sleep(code[c] === '.' ? UNIT : 3 * UNIT, id);
         snap(hov); btnOn = false; render();
@@ -943,6 +997,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       var d = obj === 'none' ? -1 : 10 + (Math.random() - 0.5) * 0.8;
       var snd = (i === 6 && tap > 0) ? tap : 4 + Math.round(Math.random() * 6);
       var cn = nameOf(col);
+      setLive('dist', d < 0 ? 'no echo' : f(d) + ' cm'); setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K'); setLive('snd', snd);
       log('dist ' + (d < 0 ? 'no echo' : f(d) + ' cm') + (d >= 2 && d <= US_MAX ? ' OBJECT' : ' empty') +
           ' | colour ' + pr[0] + '/' + pr[1] + '/' + pr[2] + ' clr ' + pr[3] + ' n ' + f(pr[0] / s, 2) + ' ' + f(pr[1] / s, 2) + ' ' + f(pr[2] / s, 2) +
           ' -> ' + cn + ' temp ' + TEMP[col] + 'K primary ' + cn + ' | sound ' + snd);
@@ -959,7 +1014,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await moveTo(ZERO, 1200, id);
     posLine('zero'); log('[zero] holding 5 s');
     await sleep(5000, id);
-    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('[' + at + '] distance ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
+    function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('[' + at + '] distance ' + (d < 0 ? 'no echo' : f(d) + ' cm')); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
     if (await goToStation(ST.A, id)) { dist('A'); await nod(2, 'YES (up / down)', id); }
     if (await goToStation(ST.B, id)) { dist('B'); await nod(0, 'NO (left / right)', id); }
     await box(id);
@@ -967,11 +1022,13 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
       log('[C] colour raw ' + pr[0] + '/' + pr[1] + '/' + pr[2] + ' clear ' + pr[3] + '  normalised ' + f(pr[0] / s, 2) + ' ' + f(pr[1] / s, 2) + ' ' + f(pr[2] / s, 2));
       log('[C] temp ' + TEMP[col] + ' K  lux ' + Math.round(pr[1] * 0.3) + '  primary ' + nameOf(col));
+      setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
     }
     if (await goToStation(ST.D, id)) {
       log('[D] listening 2 s, tap now');
       await sleep(2000, id);
       log('[D] sound peak to peak ' + (tap > 0 ? tap : 9));
+      setLive('snd', tap > 0 ? tap : 9);
     }
     for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
       await goToStation(k, id); await sleep(1000, id);
@@ -979,9 +1036,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     var hov = stationPose(ST.EH), prs = stationPose(ST.EP);
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('[E] dot press (300 ms)');
+    log('[E] dot press (300 ms)'); setLive('morse', 'dot');
     snap(prs); btnOn = true; render(); await sleep(300, id); snap(hov); btnOn = false; render(); await sleep(600, id);
-    log('[E] dash press (900 ms)');
+    log('[E] dash press (900 ms)'); setLive('morse', 'DASH');
     snap(prs); btnOn = true; render(); await sleep(900, id); snap(hov); btnOn = false; render(); await sleep(600, id);
     posLine('E hover');
     setTarget(null);
@@ -1005,6 +1062,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     $('runBtn').disabled = b;
     $('stopBtn').disabled = !b;
     $('stateTxt').textContent = label || (b ? 'Running' : 'Idle');
+    renderLive();
   }
   async function run(fn, label) {
     var id = ++runId;
@@ -1047,6 +1105,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   $('runBtn').addEventListener('click', function () {
     var s = SKETCHES[$('sketch').value];
     leds = { R: false, G: false, B: false };
+    live = { dist: '-', col: '-', snd: '-', morse: '-' };
     run(s.fn, s.label);
   });
   $('stopBtn').addEventListener('click', function () { runId++; setBusy(false, 'Stopped'); log('[stopped]', 'd'); });
