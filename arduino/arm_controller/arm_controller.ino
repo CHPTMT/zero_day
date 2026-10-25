@@ -101,7 +101,8 @@ const char *JOINT_NAMES[NJ] = {"base", "main", "2nd"};
 // ======================================================================
 // ARM DIMENSIONS (mm)
 // ======================================================================
-const float SHOULDER_HEIGHT_MM = 60;    // base plate to main arm pivot. Measure this.
+const float SHOULDER_HEIGHT_MM = 130;   // table to main arm pivot: 20 mm platform + 110 mm.
+                                        // Station heights in the brief are from the table.
 const float LINK1_MM           = 225;   // main arm, pivot to pivot
 const float LINK2_MM           = 160;   // second arm, pivot to the sensor board
 
@@ -124,9 +125,8 @@ const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of 
 const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false};  // 83 mm out (the tip), 45 mm to your right
 const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 50 mm bar below the array, at the arm end
-// Pusher note: with SHOULDER_HEIGHT_MM = 60 Point E needs the second arm at
-// about +49 to press, past its +45 limit, and the press is clamped (it lands
-// a few mm short). Measure the real pivot height: from about 85 mm up it fits.
+// Pusher note: if a pose ever needs the second arm past +45 at Point E, the
+// arm holds +45 and sets the pusher height instead (see pressAtLimit).
 
 // Sensor ranges used for the standoffs below
 //   HC-SR04 ultrasonic: 20 mm to 4 m, about 3 mm resolution, 15 deg cone.
