@@ -73,7 +73,7 @@ Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
-const float GESTURE_DEG = 6;            // same as arm_controller.ino
+const float GESTURE_DEG = 10;            // same as arm_controller.ino
 const uint8_t GESTURE_REPEATS = 2;
 const uint16_t GESTURE_STEP_MS = 900;
 

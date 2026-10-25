@@ -181,7 +181,7 @@ const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
 
 // Gestures are kept small and slow so they read clearly and do not shake
 // the arm or knock it off its taught positions.
-const float    GESTURE_DEG     = 6;     // swing each way from the station pose
+const float    GESTURE_DEG     = 10;    // swing each way from the station pose (6 was too small to see)
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
 
