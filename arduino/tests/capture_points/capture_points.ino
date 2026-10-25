@@ -11,7 +11,10 @@
  *   m+  m-  m++  m--   main arm              (+ = forward)
  *   e+  e-  e++  e--   second arm            (+ = up)
  *   s                  read the sensor used at this point
- *   t                  at Point E only: one test press on the button
+ *   t                  at Point E only: one test press on the button (a dot)
+ *   tt                 at Point E only: one long test press (a dash)
+ *   d+  d-             at Point E only: push 1 mm deeper / shallower into the button
+ *   u+  u-             at Point E only: wait 5 mm higher / lower above the button
  *   0                  clear this point's trim
  *   n                  keep this point and go to the next one
  *   p                  print the paste lines now
@@ -77,8 +80,8 @@ Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0
 Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
 Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};
-const float PRESS_TRAVEL_MM   = 36;   // the pusher tip waits this far above the button (more puts the second arm past +45)
-const float PRESS_DEPTH_MM    = 8;    // and pushes this far down past contact
+float PRESS_TRAVEL_MM         = 36;   // changed here with u+ / u- at Point E   // the pusher tip waits this far above the button (more puts the second arm past +45)
+float PRESS_DEPTH_MM          = 8;    // changed here with d+ / d- at Point E    // and pushes this far down past contact
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
@@ -421,14 +424,16 @@ void printPasteLines() {
   printStationLine("ST_C", ST_C);
   printStationLine("ST_D", ST_D);
   printStationLine("ST_E", ST_E);
+  Serial.print(F("const float PRESS_TRAVEL_MM   = ")); Serial.print(PRESS_TRAVEL_MM, 0); Serial.println(';');
+  Serial.print(F("const float PRESS_DEPTH_MM    = ")); Serial.print(PRESS_DEPTH_MM, 0); Serial.println(';');
   Serial.print(F("float IND_TRIM[NJ] = ")); printTrim(indTrim); Serial.println(';');
   Serial.println(F("-----------------------------------------------------------------------------------------"));
 }
 
-void testPress(const Pose &press, const Pose &hover) {
-  Serial.println(F("Test press: pusher into the button for 600 ms and back out."));
+void testPress(const Pose &press, const Pose &hover, uint16_t ms) {
+  Serial.print(F("Test press: pusher down onto the button for ")); Serial.print(ms); Serial.println(F(" ms and back up."));
   unsigned long ramp = moveAtSpeed(press, 300, PRESS_SPEED_DEG_S);
-  delay(max(0L, 600L - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp)));
+  delay(max(0L, (long)ms - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp)));
   moveAtSpeed(hover, 300, PRESS_SPEED_DEG_S);
 }
 
@@ -446,6 +451,7 @@ void captureStop(const Stop &st) {
   goToPose(shown, st.s->name);
   Serial.print(F("Now at ")); Serial.print(st.s->name);
   Serial.println(F(". Nudge with b m e (+ - ++ --), s to read the sensor, n for the next point."));
+  if (st.kind == K_PRESS) Serial.println(F("At E: t = test dot, tt = test dash, d+ / d- = push deeper / shallower, u+ / u- = wait higher / lower."));
   char buf[8];
   uint8_t n = 0;
   while (true) {
@@ -458,7 +464,20 @@ void captureStop(const Stop &st) {
     if (strcmp(buf, "n") == 0) return;
     if (strcmp(buf, "p") == 0) { printPasteLines(); continue; }
     if (strcmp(buf, "s") == 0) { readSensor(st); continue; }
-    if (strcmp(buf, "t") == 0) { if (st.kind == K_PRESS) testPress(press, shown); else Serial.println(F("t only works at Point E.")); continue; }
+    if (buf[0] == 't' && (buf[1] == '\0' || strcmp(buf, "tt") == 0)) {
+      if (st.kind == K_PRESS) testPress(press, shown, buf[1] ? 1800 : 600); else Serial.println(F("t only works at Point E."));
+      continue;
+    }
+    if (st.kind == K_PRESS && (buf[0] == 'd' || buf[0] == 'u') && (buf[1] == '+' || buf[1] == '-') && buf[2] == '\0') {
+      int sign = buf[1] == '+' ? 1 : -1;
+      if (buf[0] == 'd') PRESS_DEPTH_MM = constrain(PRESS_DEPTH_MM + sign, 0, 20);
+      else PRESS_TRAVEL_MM = constrain(PRESS_TRAVEL_MM + 5 * sign, 10, 60);
+      if (!stopPose(st, press, shown)) continue;
+      moveTo(shown, 600);
+      Serial.print(F("Press: waits ")); Serial.print(PRESS_TRAVEL_MM, 0); Serial.print(F(" mm above the button, pushes "));
+      Serial.print(PRESS_DEPTH_MM, 0); Serial.println(F(" mm into it. Type t to try it."));
+      continue;
+    }
     float *t = trimOf(st);
     if (strcmp(buf, "0") == 0) { t[0] = t[1] = t[2] = 0; }
     else {

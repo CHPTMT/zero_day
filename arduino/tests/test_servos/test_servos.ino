@@ -16,6 +16,15 @@
  *      b++   nudge base +5      e--   nudge 2nd -5
  *      z     back to zero       s     repeat the sweep    p     print angles
  *
+ * FINDING THE ZERO POINTS (do this first, with z):
+ *   Nudge each joint with b+ b- m+ m- e+ e- (1 degree, ++ / -- for 5) until the
+ *   base faces straight forward, the main arm stands upright and the second
+ *   arm is level (use a set square or a phone level). If the two main arm
+ *   servos buzz or strain against each other at rest, nudge just one of them
+ *   with l+ l- (left servo) or r+ r- (right servo) until the buzzing stops.
+ *   Then type c: it prints the four SERVO_ZERO lines to paste into
+ *   arm_controller.ino (and the test sketches), replacing the old ones.
+ *
  * Pins: base D2, main left D3, main right D4, second arm D5.
  * Copy any changed SERVO_ZERO and DIR values into arm_controller.ino.
  */
@@ -38,6 +47,7 @@ const char KEYS[NJ] = {'b', 'm', 'e'};
 
 Servo sBase, sLeft, sRight, sElbow;
 float cur[NJ] = {0, 0, 0};
+int offLeft = 0, offRight = 0;   // single-servo nudges on the main arm (l and r commands)
 
 int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
 
@@ -56,8 +66,8 @@ void writeJoint(uint8_t j, float rel) {
   if (j == J_BASE) {
     sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
   } else if (j == J_MAIN) {
-    sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
-    sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+    sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + offLeft + MAIN_DIR * rel));
+    sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT + offRight - MAIN_DIR * rel));
   } else {
     sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
   }
@@ -80,6 +90,16 @@ void printAngles() {
   Serial.print(F(" degrees (left servo at ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * cur[J_MAIN]));
   Serial.print(F(", right servo at ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * cur[J_MAIN]));
   Serial.print(F("), second arm ")); Serial.print(cur[J_ELBOW], 0); Serial.println(F(" degrees."));
+}
+
+// The SERVO_ZERO values that make the current position the new rest position.
+void printZeros() {
+  Serial.println(F("\nPaste these over the SERVO_ZERO lines in arm_controller.ino (and the test sketches):"));
+  Serial.print(F("const int SERVO_ZERO_BASE  = ")); Serial.print(rawClamp(SERVO_ZERO_BASE + BASE_DIR * cur[J_BASE])); Serial.println(';');
+  Serial.print(F("const int SERVO_ZERO_LEFT  = ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + offLeft + MAIN_DIR * cur[J_MAIN])); Serial.println(';');
+  Serial.print(F("const int SERVO_ZERO_RIGHT = ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT + offRight - MAIN_DIR * cur[J_MAIN])); Serial.println(';');
+  Serial.print(F("const int SERVO_ZERO_ELBOW = ")); Serial.print(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * cur[J_ELBOW])); Serial.println(';');
+  Serial.println(F("Only the whole-degree part is kept, so finish with 1 degree nudges."));
 }
 
 void goZero() {
@@ -114,6 +134,7 @@ void sweepAll() {
   Serial.println(F("  b30 = base to 30 degrees, m-10 = main arm to -10, e20 = second arm to 20"));
   Serial.println(F("  b+ / b- = nudge 1 degree, b++ / b-- = nudge 5 degrees (same for m and e)"));
   Serial.println(F("  z = back to rest, s = sweep again, p = print the angles"));
+  Serial.println(F("  l+ / r+ = nudge only the left / right main arm servo, c = print the SERVO_ZERO lines to paste"));
 }
 
 void handle(String cmd) {
@@ -123,6 +144,17 @@ void handle(String cmd) {
   if (c == 'z') { goZero(); return; }
   if (c == 's') { sweepAll(); return; }
   if (c == 'p') { printAngles(); return; }
+  if (c == 'c') { printZeros(); return; }
+  if (c == 'l' || c == 'r') {   // one main arm servo on its own, to stop the pair fighting
+    String rest = cmd.substring(1);
+    int step = rest == "+" ? 1 : rest == "-" ? -1 : rest == "++" ? 5 : rest == "--" ? -5 : 0;
+    if (step == 0) { Serial.println(F("Use l+ l- l++ l-- or r+ r- r++ r--.")); return; }
+    if (c == 'l') offLeft += step; else offRight += step;
+    writeJoint(J_MAIN, cur[J_MAIN]);
+    Serial.print(F("Single-servo nudge: left ")); Serial.print(offLeft);
+    Serial.print(F(", right ")); Serial.print(offRight); Serial.println(F(" degrees. Type c for the zero lines."));
+    return;
+  }
   for (uint8_t j = 0; j < NJ; j++) {
     if (c != KEYS[j]) continue;
     String rest = cmd.substring(1);
@@ -134,7 +166,7 @@ void handle(String cmd) {
     printAngles();
     return;
   }
-  Serial.println(F("Command not recognised. Try b30, m-10, e+, z, s or p."));
+  Serial.println(F("Command not recognised. Try b30, m-10, e+, l+, r-, z, s, p or c."));
 }
 
 void setup() {
