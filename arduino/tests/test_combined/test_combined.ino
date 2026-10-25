@@ -49,8 +49,8 @@ struct Tool {
   bool pressDown;   // true: approach along the "down" direction (pusher)
   float pitch;      // degrees the sensor is tilted up from the arm's axis (0 = looks straight along the arm)
 };
-const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
-const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
+const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false, 0};  // centre, end of the second arm
+const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false, 0};  // 42 mm out, 45 mm to your left
 // Point C is a flat vertical face (blue paper on the end of the stand's bar, facing
 // back towards the arm), 70 mm up. The arm cannot get low enough to look at it
 // level: at C the second arm always points about 75 degrees down. With the colour
@@ -59,7 +59,7 @@ const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 m
 // looks at the face almost level, 15 mm away. Measure the angle you glue it at.
 const float COLOUR_PITCH_DEG = 0;
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false, COLOUR_PITCH_DEG};  // 83 mm out (the tip), 45 mm to your right
-const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true};   // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
+const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true, 0};   // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
 // Pusher note: if a pose ever needs the second arm past +45 at Point E, the
 // arm holds +45 and sets the pusher height instead (see pressAtLimit).
 

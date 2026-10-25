@@ -16,7 +16,9 @@
  * Beeper on D11: task N beeps N times when it starts and N times when it
  * ends, then a 2 s pause before the next task.
  * Everything the arm does and senses is printed to the Serial Monitor
- * (115200 baud), so the run can be followed without the LCD.
+ * (115200 baud). A 16x2 I2C LCD on A2 (SDA) and A3 (SCL) shows the task in
+ * progress, the distances at A and B and each task's result, then cycles
+ * through a summary at the end.
  *
  * ANGLES
  *   All joint angles in this file are RELATIVE, with 0 at the zero pose:
@@ -84,6 +86,9 @@ const uint8_t PIN_LED_BLUE   = 10;
 const bool LEDS_ACTIVE_HIGH  = true;   // false only if the LEDs' short legs go to a pin and long legs to 5 V
 const uint8_t PIN_BUZZER     = 11;   // beeper: + to D11, - to GND
 const uint8_t PIN_STATUS     = 13;   // onboard LED
+// LCD monitor: 16x2 LCD with an I2C backpack. SDA -> A2, SCL -> A3, VCC -> 5 V, GND -> GND.
+const uint8_t PIN_LCD_SDA    = A2;
+const uint8_t PIN_LCD_SCL    = A3;
 
 // ======================================================================
 // SERVO CALIBRATION
@@ -131,8 +136,8 @@ struct Tool {
   bool pressDown;   // true: approach along the "down" direction (pusher)
   float pitch;      // degrees the sensor is tilted up from the arm's axis (0 = looks straight along the arm)
 };
-const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
-const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
+const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false, 0};  // centre, end of the second arm
+const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false, 0};  // 42 mm out, 45 mm to your left
 // Point C is a flat vertical face (blue paper on the end of the stand's bar, facing
 // back towards the arm), 70 mm up. The arm cannot get low enough to look at it
 // level: at C the second arm always points about 75 degrees down. With the colour
@@ -141,7 +146,7 @@ const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 m
 // looks at the face almost level, 15 mm away. Measure the angle you glue it at.
 const float COLOUR_PITCH_DEG = 0;
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false, COLOUR_PITCH_DEG};  // 83 mm out (the tip), 45 mm to your right
-const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true};   // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
+const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true, 0};  // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
 // Pusher note: if a pose ever needs the second arm past +45 at Point E, the
 // arm holds +45 and sets the pusher height instead (see pressAtLimit).
 
@@ -300,6 +305,89 @@ float distA = -1, distB = -1;
 char resultColour = '-';
 int  resultSound = -1;
 int  resultLevel = 0;
+float resultPointZ = -1;   // height pointed at on the indicator
+
+// ======================================================================
+// LCD MONITOR
+// ======================================================================
+// A2 and A3 are not the Uno's hardware I2C pins (A4 and A5 carry the colour
+// sensor), so the LCD is driven by this small software I2C. Nothing to
+// install. It finds the backpack at 0x27 or 0x3F; with no LCD the run goes on
+// as normal. Backpack wiring assumed: P0 RS, P1 RW, P2 E, P3 backlight, P4 to
+// P7 = D4 to D7 (the common PCF8574 board).
+class SoftLcd : public Print {
+ public:
+  bool ok = false;
+  uint8_t addr = 0;
+
+  bool begin() {
+    line(PIN_LCD_SDA, true);
+    line(PIN_LCD_SCL, true);
+    const uint8_t found[2] = {0x27, 0x3F};
+    for (uint8_t i = 0; i < 2 && !ok; i++) {
+      addr = found[i];
+      ok = startTx();
+      stop();
+    }
+    if (!ok) return false;
+    delay(50);
+    for (uint8_t i = 0; i < 3; i++) { nibble(0x30); delay(5); }   // into 8 bit mode from any state
+    nibble(0x20);                                                  // then 4 bit mode
+    command(0x28);   // 2 lines, 5x8 dots
+    command(0x0C);   // display on, no cursor
+    command(0x06);   // move right after each character
+    clear();
+    return true;
+  }
+  void clear() { command(0x01); delay(2); }
+  void setCursor(uint8_t col, uint8_t row) { command(0x80 | (col + (row ? 0x40 : 0))); }
+  size_t write(uint8_t c) { send(c, RS); return 1; }
+
+ private:
+  static const uint8_t RS = 0x01, EN = 0x04, LIGHT = 0x08;
+
+  // Open drain: a line is pulled low, or let go and pulled high.
+  void line(uint8_t pin, bool high) {
+    if (high) pinMode(pin, INPUT_PULLUP);
+    else { digitalWrite(pin, LOW); pinMode(pin, OUTPUT); }
+    delayMicroseconds(4);
+  }
+  bool writeByte(uint8_t b) {
+    for (int8_t i = 7; i >= 0; i--) {
+      line(PIN_LCD_SDA, (b >> i) & 1);
+      line(PIN_LCD_SCL, true);
+      line(PIN_LCD_SCL, false);
+    }
+    line(PIN_LCD_SDA, true);
+    line(PIN_LCD_SCL, true);
+    bool ack = digitalRead(PIN_LCD_SDA) == LOW;
+    line(PIN_LCD_SCL, false);
+    return ack;
+  }
+  bool startTx() {
+    line(PIN_LCD_SDA, true); line(PIN_LCD_SCL, true);
+    line(PIN_LCD_SDA, false); line(PIN_LCD_SCL, false);
+    return writeByte(addr << 1);
+  }
+  void stop() { line(PIN_LCD_SDA, false); line(PIN_LCD_SCL, true); line(PIN_LCD_SDA, true); }
+
+  // One 4 bit transfer, latched by a pulse on E (used only while starting up).
+  void nibble(uint8_t hi) {
+    if (startTx()) { writeByte(hi | LIGHT | EN); writeByte(hi | LIGHT); }
+    stop();
+    delayMicroseconds(50);
+  }
+  // A whole byte as two 4 bit halves in one I2C transfer.
+  void send(uint8_t v, uint8_t mode) {
+    if (!ok) return;
+    uint8_t hi = (v & 0xF0) | mode | LIGHT, lo = (uint8_t)(v << 4) | mode | LIGHT;
+    if (startTx()) { writeByte(hi | EN); writeByte(hi); writeByte(lo | EN); writeByte(lo); }
+    stop();
+    delayMicroseconds(50);
+  }
+  void command(uint8_t c) { send(c, 0); }
+};
+SoftLcd lcd;
 
 // ======================================================================
 // SERVO OUTPUT
@@ -839,6 +927,7 @@ void sendMorseWord(const char *word) {
     const char *code = morseFor(word[i]);
     if (!code) continue;
     Serial.print(F("   Letter ")); Serial.print(word[i]); Serial.print(F(":"));
+    lcd.setCursor(13 + i, 1); lcd.write(word[i]);   // each letter appears as it is sent
     for (uint8_t k = 0; code[k]; k++) {
       Serial.print(code[k] == '.' ? F(" short press (dot)") : F(" long press (dash)"));
       pressFor(code[k] == '.' ? MORSE_UNIT_MS : 3 * MORSE_UNIT_MS);
@@ -849,6 +938,52 @@ void sendMorseWord(const char *word) {
   }
   delay(6 * MORSE_UNIT_MS);   // 3.6 s of silence: the receiver ends the word after 3 s
   Serial.print(F("Finished sending ")); Serial.print(word); Serial.println(F(". The receiver should now show it on its screen."));
+}
+
+// ======================================================================
+// LCD SCREENS
+// ======================================================================
+// Clear one row and leave the cursor at its start.
+void lcdRow(uint8_t row) {
+  lcd.setCursor(0, row);
+  for (uint8_t i = 0; i < 16; i++) lcd.write(' ');
+  lcd.setCursor(0, row);
+}
+
+// New screen: the top line, with the cursor left at the start of the bottom line.
+void lcdShow(const __FlashStringHelper *top) {
+  lcd.clear();
+  lcd.print(top);
+  lcd.setCursor(0, 1);
+}
+
+// "A12.0cm" or "A none" (at most 7 characters), starting at a column of a row.
+void lcdDist(uint8_t col, uint8_t row, char tag, float d) {
+  lcd.setCursor(col, row);
+  lcd.write(tag);
+  if (d < 0) lcd.print(F(" none"));
+  else { lcd.print(d, d < 100 ? 1 : 0); lcd.print(F("cm")); }
+}
+
+const __FlashStringHelper *gestureName() {
+  if (resultA && resultB) return F("YES+NO");
+  if (resultA) return F("YES");
+  if (resultB) return F("NO");
+  return F("BOX");
+}
+
+// End of the run: two summary screens, swapped every 3 s.
+void lcdSummary(uint8_t page) {
+  lcd.clear();
+  if (page == 0) {
+    lcdDist(0, 0, 'A', distA);
+    lcdDist(8, 0, 'B', distB);
+    lcd.setCursor(0, 1); lcd.print(F("Gesture ")); lcd.print(gestureName());
+  } else {
+    lcd.print(F("C ")); lcd.print(colourName(resultColour));
+    lcd.print(F(" D ")); if (resultSound < 0) lcd.print(F("none")); else { lcd.print(resultLevel); lcd.print('%'); }
+    lcd.setCursor(0, 1); lcd.print(F("E sent ")); lcd.print(targetWord);
+  }
 }
 
 // ======================================================================
@@ -873,6 +1008,8 @@ void holdZeroAndReadWord() {
   Serial.println(F(" seconds: base facing forward, main arm upright, second arm level."));
   Serial.print(F("The Morse word for Point E is ")); Serial.print(targetWord);
   Serial.println(F(". To change it, type a new 3-letter word now and press Enter."));
+  lcdShow(F("Rest position 5s"));
+  lcd.print(F("Word: ")); lcd.print(targetWord);
   char buf[8];
   uint8_t n = 0;
   unsigned long start = millis();
@@ -885,6 +1022,7 @@ void holdZeroAndReadWord() {
         strcpy(targetWord, buf);
         for (uint8_t i = 0; i < 3; i++) EEPROM.update(i, targetWord[i]);
         Serial.print(F("New word saved: ")); Serial.print(targetWord); Serial.println('.');
+        lcd.setCursor(6, 1); lcd.print(targetWord);
       }
       n = 0;
     } else if (n < 7) {
@@ -910,37 +1048,51 @@ void printDistance(const __FlashStringHelper *where, float d, bool found, float 
 
 void task1() {
   Serial.println(F("\nTASK 1 of 4: checking Points A and B for an object with the ultrasonic sensor."));
+  lcdShow(F("Task 1: A and B"));
+  lcd.print(F("Going to A"));
   goToStation(ST_A);
   distA = readDistanceCm();
   resultA = inWindow(distA, US_A_MIN_CM, US_A_MAX_CM);
   printDistance(F("Point A"), distA, resultA, US_A_MIN_CM, US_A_MAX_CM);
-  if (resultA) gestureYes(ST_A);
+  lcdRow(1);
+  lcdDist(0, 1, 'A', distA);
+  if (resultA) { lcdRow(0); lcd.print(F("A found: YES")); gestureYes(ST_A); }
 
   liftClear();   // A and B are above each other, so make B a visibly separate visit
   Serial.println(F("Going down to Point B, the lower point."));
+  lcdRow(0); lcd.print(F("Going to B"));
   goToStation(ST_B);
   distB = readDistanceCm();
   resultB = inWindow(distB, US_B_MIN_CM, US_B_MAX_CM);
   printDistance(F("Point B"), distB, resultB, US_B_MIN_CM, US_B_MAX_CM);
-  if (resultB) gestureNo();
+  lcdDist(8, 1, 'B', distB);
+  if (resultB) { lcdRow(0); lcd.print(F("B found: NO")); gestureNo(); }
 
-  if (!resultA && !resultB) gestureBox(ST_B);
+  if (!resultA && !resultB) { lcdRow(0); lcd.print(F("None found: BOX")); gestureBox(ST_B); }
+  lcdRow(0); lcd.print(F("T1 done: ")); lcd.print(gestureName());
 }
 
 void task2() {
   Serial.println(F("\nTASK 2 of 4: reading the colour of the paper at Point C."));
+  lcdShow(F("Task 2: colour C"));
+  lcd.print(F("Going to C"));
   goToStation(ST_C);
+  lcdRow(1); lcd.print(F("Reading..."));
   showColourLive(COLOUR_LIVE_MS);
   resultColour = readColour();
   Serial.print(F("Point C: the paper is ")); Serial.print(colourName(resultColour));
   Serial.print(F(". The ")); Serial.print(colourName(resultColour)); Serial.println(F(" LED is now on."));
   setColourLed(resultColour);   // stays lit to the end of the run
+  lcdRow(1); lcd.print(F("C ")); lcd.print(colourName(resultColour)); lcd.print(F(", LED on"));
 }
 
 void task3() {
   Serial.println(F("\nTASK 3 of 4: measuring a tap at Point D and showing its loudness on the indicator."));
+  lcdShow(F("Task 3: sound D"));
+  lcd.print(F("Going to D"));
   goToStation(ST_D);
   Serial.println(F("Listening for a tap (up to 3 seconds)..."));
+  lcdRow(1); lcd.print(F("Tap now..."));
   digitalWrite(PIN_STATUS, HIGH);
   resultSound = captureSound();
   digitalWrite(PIN_STATUS, LOW);
@@ -958,6 +1110,11 @@ void task3() {
   }
 
   float zPoint = IND_Z_LOW + f * (IND_Z_HIGH - IND_Z_LOW);
+  resultPointZ = zPoint;
+  lcdRow(1);
+  if (resultSound < 0) lcd.print(F("No tap, "));
+  else { lcd.print(F("Tap ")); lcd.print(resultLevel); lcd.print(F("% ")); }
+  lcd.print(zPoint, 0); lcd.print(F("mm"));
   Station ind = {"the volume indicator", IND_THETA, IND_R, zPoint, IND_STANDOFF, {IND_TRIM[0], IND_TRIM[1], IND_TRIM[2]}, &TOOL_US};
   Pose p;
   if (stationPose(ind, p)) {
@@ -970,6 +1127,8 @@ void task3() {
 
 void task4() {
   Serial.println(F("\nTASK 4 of 4: pressing the word in Morse code on the button at Point E."));
+  lcdShow(F("Task 4: Morse E"));
+  lcd.print(F("Going to E"));
   if (!stationPose(buttonPoint(-PRESS_DEPTH_MM), pressPose) || !stationPose(buttonPoint(PRESS_TRAVEL_MM), hoverPose)) {
     Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
@@ -978,7 +1137,9 @@ void task4() {
   Serial.print(F("Each press pushes the pusher tip ")); Serial.print(PRESS_TRAVEL_MM + PRESS_DEPTH_MM, 0);
   Serial.print(F(" mm along the button's axis (tilted ")); Serial.print(BUTTON_TILT_DEG, 0);
   Serial.print(F(" degrees from upright), ending ")); Serial.print(PRESS_DEPTH_MM, 0); Serial.println(F(" mm into the button."));
+  lcdRow(1); lcd.print(F("Sending ")); lcd.print(targetWord); lcd.print(':');
   sendMorseWord(targetWord);
+  lcdRow(0); lcd.print(F("T4 done: sent"));
 }
 
 // Task n: n beeps, the task, n beeps, then a 2 s pause.
@@ -1032,6 +1193,12 @@ void setup() {
   writePose(ZERO_POSE);
 
   Serial.println(F("\nGroup 21 robotic arm: demonstration program starting."));
+  if (lcd.begin()) {
+    Serial.print(F("LCD monitor: found at 0x")); Serial.print(lcd.addr, HEX); Serial.println('.');
+    lcdShow(F("Group 21 arm")); lcd.print(F("Starting..."));
+  } else {
+    Serial.println(F("LCD monitor: NOT FOUND. Check SDA (A2), SCL (A3), 5 V and GND. The run carries on without it."));
+  }
   tcsOk = tcs.begin();
   Serial.println(tcsOk ? F("Colour sensor: connected.")
                        : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires. Point C will light red by default."));
@@ -1066,12 +1233,18 @@ void loop() {
       state = ST_FINISH;
       break;
     case ST_FINISH:
+      lcdShow(F("Run finished"));
+      lcd.print(F("Back to rest"));
       goToPose(ZERO_POSE, "the rest position");
       printSummary();
       state = ST_IDLE;
       break;
-    case ST_IDLE:
+    case ST_IDLE: {
       digitalWrite(PIN_STATUS, (millis() / 500) % 2);
+      static uint8_t page = 2;   // summary screens on the LCD, swapped every 3 s
+      uint8_t now = (millis() / 3000) % 2;
+      if (now != page) { page = now; lcdSummary(page); }
       break;
+    }
   }
 }

@@ -15,6 +15,8 @@
 | Sound sensor | VCC / GND | 5 V / GND |
 | Colour sensor TCS34725 | SDA / SCL | A4 / A5 |
 | Colour sensor | VCC / GND | 5 V / GND |
+| LCD monitor, 16x2 with I2C backpack | SDA / SCL | A2 / A3 |
+| LCD monitor | VCC / GND | 5 V / GND |
 | Red LED, through 220 ohm | long leg / short leg | D8 / GND |
 | Green LED, through 220 ohm | long leg / short leg | D9 / GND |
 | Blue LED, through 220 ohm | long leg / short leg | D10 / GND |
@@ -22,6 +24,8 @@
 | Status | onboard LED | D13 |
 
 Each LED lights when its pin is HIGH. At start up the arm lights red, green and blue alone for 1 s each with a beep, so a swapped or dead LED shows straight away. At Point C the LEDs follow what the colour sensor sees for 2 s, then the LED for the paper colour stays on to the end of the run.
+
+The LCD monitor shows the task in progress, the distances read at A and B, and each task's result, then swaps between two summary screens at the end. A2 and A3 are not the Uno's hardware I2C pins, so `arm_controller` drives this LCD with its own software I2C (no library to install) and finds the backpack at address 0x27 or 0x3F by itself. If the screen lights but shows nothing, turn the contrast screw on the backpack. With no LCD connected the run carries on and the Serial Monitor says it was not found.
 
 The beeper marks each task: Task N beeps N times at its start and N times at its end, then the arm waits 2 s. The code drives it with a 2.5 kHz tone, which suits a passive buzzer. With an active buzzer (one that beeps on its own from plain 5 V) set `BUZZER_PASSIVE` to false. The tone uses Timer2, which the servos do not use.
 
