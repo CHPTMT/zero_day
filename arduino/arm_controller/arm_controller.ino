@@ -103,7 +103,7 @@ const int SERVO_ZERO_ELBOW = 90;
 // Direction of each joint. Flip to -1 if the joint moves the wrong way.
 // MAIN_DIR = 1 means: forward = left servo value goes up, right servo goes down.
 const int8_t BASE_DIR  = 1;
-const int8_t MAIN_DIR  = 1;
+const int8_t MAIN_DIR  = -1;   // flipped: with 1 the main arm leaned back instead of forward
 const int8_t ELBOW_DIR = 1;
 
 // Relative limits in degrees

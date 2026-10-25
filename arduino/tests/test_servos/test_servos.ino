@@ -28,7 +28,7 @@ const int SERVO_ZERO_BASE  = 90;
 const int SERVO_ZERO_LEFT  = 90;
 const int SERVO_ZERO_RIGHT = 90;
 const int SERVO_ZERO_ELBOW = 90;
-const int8_t BASE_DIR = 1, MAIN_DIR = 1, ELBOW_DIR = 1;
+const int8_t BASE_DIR = 1, MAIN_DIR = -1, ELBOW_DIR = 1;   // MAIN_DIR -1: same as arm_controller
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
