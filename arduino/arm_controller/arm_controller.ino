@@ -10,8 +10,8 @@
  *           BOX  sensor traces a square, both together (nothing at A or B)
  *   TASK 2  Point C: colour sensor, the red, green or blue LED lights
  *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
- *   TASK 4  Point E: press the button in Morse for the 3 letter word,
- *           the pusher moving straight down onto the button each press
+ *   TASK 4  Point E: press the button in Morse for the 3 letter word; each
+ *           press is the second arm tilting down onto the button and back up
  *   FINISH  back to zero, print a summary
  * Beeper on D11: task N beeps N times when it starts and N times when it
  * ends, then a 2 s pause before the next task.
@@ -162,10 +162,10 @@ struct Station {
 };
 
 Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};      // 10 cm from the plate
-Station ST_B       = {"Point B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
+Station ST_B       = {"Point B",       10, 350, 150,  70, {0, 0, 0}, &TOOL_US};      // 7 cm, so the arm leans clearly lower than at A
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};     // 15 mm from the paper
 Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};   // 4 cm from the source
-Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // 40 mm above the button, so each press is easy to see
+Station ST_E_HOVER = {"Point E (above the button)",170, 250, 300,  40, {0, 0, 0}, &TOOL_PUSHER};  // used only by the main arm fallback
 Station ST_E_PRESS = {"Point E (pressing)",170, 250, 300,  -8, {0, 0, 0}, &TOOL_PUSHER};  // 8 mm past contact
 
 // Volume indicator: the pointer height goes from IND_Z_LOW (quiet) to
@@ -188,6 +188,7 @@ const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point this long be
 const bool     USE_TRAVEL   = true;          // lift before turning the base
 const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
 const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
+const float    LIFT_TURN_DEG = 25;           // between A and B the base turns this far towards the front and back
 
 // Gestures, each a different shape so they cannot be confused:
 //   YES  the sensor goes straight up and down (vertical line), 2 nods
@@ -195,14 +196,18 @@ const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
 //   BOX  the sensor traces a square, up/down and left/right together
 const float    GESTURE_UP_MM   = 70;    // YES and BOX: aim this far above and below the point (sensor moves about 40 mm)
 const float    GESTURE_DEG     = 15;    // NO and BOX: base turns this far each way
-const float    BOX_LIFT_MM     = 40;    // BOX is drawn this far above B, so its bottom stays clear of the main arm limit
+const float    BOX_LIFT_MM     = 60;    // BOX is drawn this far above B, so its bottom stays clear of the main arm limit
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 900;   // time for each half swing
 const uint16_t GESTURE_PAUSE_MS = 400;  // short stop at each end of a swing, so the shape reads clearly
 
-// Point E press: false = pusher moves straight down (main arm and second arm
-// together, the correct press). true = main arm only, a fallback if the
-// second arm servo is too weak to move.
+// Point E press. Each press is the second arm tilting PRESS_LIFT_DEG: up off
+// the button, down onto it, up again, with the base and main arm still. The
+// pusher tip moves about 50 mm, easy to see. Presses run at PRESS_SPEED_DEG_S
+// (faster than other moves) so a 600 ms dot and an 1800 ms dash stay apart.
+// PRESS_MAIN_ARM_ONLY = true is a fallback that presses by leaning the main arm.
+const float    PRESS_LIFT_DEG     = 18;
+const float    PRESS_SPEED_DEG_S  = 60;
 const bool     PRESS_MAIN_ARM_ONLY = false;
 
 // Beeper
@@ -250,11 +255,17 @@ const uint16_t SOUND_HOLD_MS   = 4000;   // time spent pointing at the indicator
 
 // Morse timing, two times slower than before to go easy on the arm. A dot is
 // 1 unit, a dash 3, the gap inside a letter 1 and between letters 3. The
-// receiver must split dots from dashes, and letters, at 2 units (1200 ms).
+// receivers split dots from dashes at 1100 ms and end a letter after 1300 ms
+// of silence, halfway between what the button actually sees.
 const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
-const uint16_t PRESS_MOVE_MS  = 300;   // shortest move onto and off the button; the speed cap makes the
-                                       // 9 degree press take about 480 ms, and the gaps allow for that
+const uint16_t PRESS_MOVE_MS  = 300;   // shortest move onto and off the button; an 18 degree press at
+                                       // 60 deg/s takes about 470 ms, and the gaps allow for that
 const int16_t  PRESS_EXTRA_MS = 0;
+// The button only closes in the last 8 mm of the 52 mm drop, about 77% of the
+// way through each eased move. The press the receiver sees is the hold plus
+// the end of the move down and the start of the move up; the gap is the pause
+// plus the rest of both moves. Holds and pauses are cut by those amounts.
+const float    PRESS_CLOSE_AT = 0.77;
 
 // ======================================================================
 // GLOBALS
@@ -314,15 +325,16 @@ void writePose(const Pose &p) {
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]);
 }
 
-// Smooth move of all joints together with cosine easing. Returns how long it took.
-unsigned long moveTo(const Pose &target, uint16_t ms) {
+// Smooth move of all joints together with cosine easing, no joint faster
+// than topSpeed (deg/s). Returns how long it took.
+unsigned long moveAtSpeed(const Pose &target, uint16_t ms, float topSpeed) {
   Pose start = cur;
   // ms is the shortest time allowed. Long moves take longer, so that no joint
-  // ever goes faster than MAX_SPEED_DEG_S (cosine easing peaks at pi/2 times
-  // the average speed, hence the 1.571).
+  // ever goes faster than topSpeed (cosine easing peaks at pi/2 times the
+  // average speed, hence the 1.571).
   float far = 0;
   for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
-  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / MAX_SPEED_DEG_S));
+  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / topSpeed));
   uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
@@ -331,6 +343,8 @@ unsigned long moveTo(const Pose &target, uint16_t ms) {
   }
   return dur;
 }
+
+unsigned long moveTo(const Pose &target, uint16_t ms) { return moveAtSpeed(target, ms, MAX_SPEED_DEG_S); }
 
 void moveJoint(uint8_t j, float rel, uint16_t ms) {
   Pose p = cur;
@@ -480,12 +494,16 @@ void goToPose(const Pose &p, const char *label) {
   delay(POINT_HOLD_MS);
 }
 
-// Lift back to the travel pose (main arm upright, second arm slightly up)
-// and hold, so the next point is a separate visit, e.g. A then B.
+// Leave a point completely: lift to the travel pose (main arm upright, second
+// arm slightly up) and turn the base LIFT_TURN_DEG towards the front, then
+// hold. The next goToStation turns back and comes down, so A and B, which sit
+// above each other, are two clearly separate visits.
 void liftClear() {
-  Serial.println(F("Lifting clear before the next point."));
+  Serial.println(F("Leaving the point: lifting up and turning towards the front."));
   Pose lift = {{cur.a[J_BASE], TRAVEL_MAIN, TRAVEL_ELBOW}};
   moveTo(lift, MOVE_MS);
+  lift.a[J_BASE] -= (cur.a[J_BASE] > 0 ? 1 : -1) * LIFT_TURN_DEG;
+  moveTo(lift, BASE_TURN_MS);
   delay(POINT_HOLD_MS / 2);
 }
 
@@ -769,21 +787,20 @@ const char *morseFor(char c) {
 Pose pressPose, hoverPose;
 unsigned long pressRamp = PRESS_MOVE_MS;   // time one move onto or off the button really takes
 
-// One press: ease down onto the button, hold, ease back up. The button closes
-// about halfway down each move, so the hold is cut by one move time to keep
-// the press the receiver sees close to `ms`.
+// One press: ease down onto the button, hold, ease back up, timed so the
+// press the receiver sees is close to `ms`.
 void pressFor(uint16_t ms) {
   digitalWrite(PIN_STATUS, HIGH);
-  unsigned long ramp = moveTo(pressPose, PRESS_MOVE_MS);
+  unsigned long ramp = moveAtSpeed(pressPose, PRESS_MOVE_MS, PRESS_SPEED_DEG_S);
   pressRamp = ramp;
-  delay(max(0L, (long)ms + PRESS_EXTRA_MS - (long)ramp));
-  moveTo(hoverPose, PRESS_MOVE_MS);
+  delay(max(0L, (long)ms + PRESS_EXTRA_MS - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp)));
+  moveAtSpeed(hoverPose, PRESS_MOVE_MS, PRESS_SPEED_DEG_S);
   digitalWrite(PIN_STATUS, LOW);
 }
 
-// Silence between presses, cut the same way (half a move up, half a move down).
+// Silence between presses, cut by the parts of the moves that are off the button.
 void pauseFor(uint16_t ms) {
-  delay(max(0L, (long)ms - (long)pressRamp));
+  delay(max(0L, (long)ms - (long)(2 * PRESS_CLOSE_AT * pressRamp)));
 }
 
 void sendMorseWord(const char *word) {
@@ -800,7 +817,7 @@ void sendMorseWord(const char *word) {
     Serial.println();
     if (word[i + 1]) pauseFor(3 * MORSE_UNIT_MS);
   }
-  delay(8 * MORSE_UNIT_MS);   // receiver ends the word after the silence
+  delay(6 * MORSE_UNIT_MS);   // 3.6 s of silence: the receiver ends the word after 3 s
   Serial.print(F("Finished sending ")); Serial.print(word); Serial.println(F(". The receiver should now show it on its screen."));
 }
 
@@ -870,6 +887,7 @@ void task1() {
   if (resultA) gestureYes(ST_A);
 
   liftClear();   // A and B are above each other, so make B a visibly separate visit
+  Serial.println(F("Going down to Point B, the lower point."));
   goToStation(ST_B);
   distB = readDistanceCm();
   resultB = inWindow(distB, US_B_MIN_CM, US_B_MAX_CM);
@@ -926,18 +944,21 @@ void task4() {
     Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
   }
+  hoverPose = pressPose;
   if (PRESS_MAIN_ARM_ONLY) {
     // Fallback: same pose with the main arm leaned back off the button.
-    hoverPose = pressPose;
     setTipHeight(hoverPose, ST_E_HOVER.z + ST_E_HOVER.standoff);
-  } else if (!stationPose(ST_E_HOVER, hoverPose)) {
-    return;
+  } else {
+    // Same pose with only the second arm tilted up off the button.
+    hoverPose.a[J_ELBOW] = min(pressPose.a[J_ELBOW] + PRESS_LIFT_DEG, REL_MAX[J_ELBOW]);
   }
   goToPose(hoverPose, "Point E (above the button)");
-  Serial.print(F("Each press moves the pusher ")); Serial.print(ST_E_HOVER.standoff - ST_E_PRESS.standoff, 0);
-  Serial.print(F(" mm down onto the button and back up (main arm "));
-  Serial.print(pressPose.a[J_MAIN] - hoverPose.a[J_MAIN], 1); Serial.print(F(" degrees, second arm "));
-  Serial.print(pressPose.a[J_ELBOW] - hoverPose.a[J_ELBOW], 1); Serial.println(F(" degrees)."));
+  float th, r, zUp, zDown;
+  toolPoint(hoverPose, TOOL_PUSHER, th, r, zUp);
+  toolPoint(pressPose, TOOL_PUSHER, th, r, zDown);
+  Serial.print(F("Each press tilts the second arm ")); Serial.print(hoverPose.a[J_ELBOW] - pressPose.a[J_ELBOW], 1);
+  Serial.print(F(" degrees down and back up: the pusher drops ")); Serial.print(zUp - zDown, 0);
+  Serial.println(F(" mm onto the button."));
   sendMorseWord(targetWord);
 }
 

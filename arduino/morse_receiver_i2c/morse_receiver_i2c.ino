@@ -4,11 +4,13 @@
   Output: 16x2 I2C LCD (SDA=A4, SCL=A5)
   Decodes 3 letters, then shows the word.
 
-  Timing matches arm_controller.ino, which presses two times slower than
-  before to go easy on the arm: dot 600 ms, dash 1800 ms, 600 ms between
-  the presses of a letter, 1800 ms between letters. Each threshold below
-  sits halfway between the short and the long time, so a press or a gap can
-  be up to 600 ms off and still decode correctly.
+  Timing matches arm_controller.ino. The arm aims for dot 600 ms, dash
+  1800 ms, 600 ms between the presses of a letter and 1800 ms between
+  letters. Measured from the pusher's real motion, the button sees
+  dots 400 to 600 ms, dashes 1600 to 1800 ms, gaps inside a letter 700 to
+  900 ms and gaps between letters 1780 to 1980 ms, depending on how far down
+  the button switches. Each threshold below sits halfway between the two
+  bands, leaving at least about 400 ms of margin on each side.
 */
 
 #include <Wire.h>
@@ -20,9 +22,9 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);   // if blank, try address 0x3F
 
 // ---------- Timing (ms) - TUNE THESE ----------
 const unsigned long DEBOUNCE     = 30;
-const unsigned long DOT_MAX      = 1200;  // press shorter than this = dot, else dash (dot 600, dash 1800)
-const unsigned long LETTER_GAP   = 1200;  // release longer than this = letter finished (600 inside a letter, 1800 between)
-const unsigned long WORD_TIMEOUT = 6000;  // silence after a letter = word finished early
+const unsigned long DOT_MAX      = 1100;  // press shorter than this = dot, else dash (arm: dot 400-600, dash 1600-1800)
+const unsigned long LETTER_GAP   = 1300;  // release longer than this = letter finished (arm: 700-900 inside, 1780-1980 between)
+const unsigned long WORD_TIMEOUT = 4000;  // silence after a letter = word finished early (only if fewer than 3 letters)
 const int WORD_LEN               = 3;
 
 // ---------- Morse table A-Z ----------

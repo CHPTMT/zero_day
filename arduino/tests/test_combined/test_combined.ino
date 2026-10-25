@@ -12,8 +12,8 @@
  *   4. BOX gesture (sensor traces a square)
  *   5. Point C, read colour
  *   6. Point D, read sound level, then indicator low, middle, high
- *   7. Point E, 40 mm above the button, one dot press and one dash press
- *      (600 / 1800 ms), the pusher moving straight down onto the button
+ *   7. Point E, one dot press and one dash press (600 / 1800 ms), each the
+ *      second arm tilting 18 degrees down onto the button and back up
  *   8. Back to zero
  * Type any key in the Serial Monitor (115200) to run it again.
  *
@@ -62,7 +62,7 @@ const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 30 mm bar under
 // ---------------- stations ----------------
 struct Station { const char *name; float theta, r, z, standoff; float trim[NJ]; const Tool *tool; };
 Station ST_A       = {"Point A",       10, 350, 320, 100, {0, 0, 0}, &TOOL_US};
-Station ST_B       = {"Point B",       10, 350, 150, 100, {0, 0, 0}, &TOOL_US};
+Station ST_B       = {"Point B",       10, 350, 150,  70, {0, 0, 0}, &TOOL_US};
 Station ST_C       = {"Point C",       55, 200,  70,  15, {0, 0, 0}, &TOOL_RGB};
 Station ST_D       = {"Point D",      100, 275, 250,  40, {0, 0, 0}, &TOOL_SOUND};
 Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0, 0, 0}, &TOOL_US};
@@ -75,9 +75,11 @@ const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
+const float PRESS_LIFT_DEG = 18, PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.77;
+const float LIFT_TURN_DEG = 25;
 const float GESTURE_UP_MM = 70;          // same as arm_controller.ino
 const float GESTURE_DEG = 15;
-const float BOX_LIFT_MM = 40;
+const float BOX_LIFT_MM = 60;
 const uint8_t GESTURE_REPEATS = 2;
 const uint16_t GESTURE_STEP_MS = 900;
 const uint16_t GESTURE_PAUSE_MS = 400;
@@ -114,14 +116,14 @@ void writeJoint(uint8_t j, float rel) {
 
 void writePose(const Pose &p) { for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]); }
 
-unsigned long moveTo(const Pose &target, uint16_t ms) {
+unsigned long moveAtSpeed(const Pose &target, uint16_t ms, float topSpeed) {
   Pose start = cur;
   // ms is the shortest time allowed. Long moves take longer, so that no joint
-  // ever goes faster than MAX_SPEED_DEG_S (cosine easing peaks at pi/2 times
-  // the average speed, hence the 1.571).
+  // ever goes faster than topSpeed (cosine easing peaks at pi/2 times the
+  // average speed, hence the 1.571).
   float far = 0;
   for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
-  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / MAX_SPEED_DEG_S));
+  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / topSpeed));
   uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
@@ -130,6 +132,8 @@ unsigned long moveTo(const Pose &target, uint16_t ms) {
   }
   return dur;
 }
+
+unsigned long moveTo(const Pose &target, uint16_t ms) { return moveAtSpeed(target, ms, MAX_SPEED_DEG_S); }
 
 void moveJoint(uint8_t j, float rel, uint16_t ms) {
   Pose p = cur;
@@ -410,8 +414,10 @@ void runAll() {
   delay(5000);
 
   if (goToStation(ST_A)) { printDistance("Point A"); gestureYes(ST_A); }
-  Serial.println(F("Lifting clear before Point B."));
-  { Pose lift = {{cur.a[J_BASE], 0, 15}}; moveTo(lift, MOVE_MS); delay(POINT_HOLD_MS / 2); }
+  Serial.println(F("Leaving the point: lifting up and turning towards the front."));
+  { Pose lift = {{cur.a[J_BASE], 0, 15}}; moveTo(lift, MOVE_MS);
+    lift.a[J_BASE] -= (cur.a[J_BASE] > 0 ? 1 : -1) * LIFT_TURN_DEG; moveTo(lift, BASE_TURN_MS); delay(POINT_HOLD_MS / 2); }
+  Serial.println(F("Going down to Point B, the lower point."));
   if (goToStation(ST_B)) { printDistance("Point B"); gestureNo(); gestureBox(ST_B); }
   if (goToStation(ST_C)) printColour();
   if (goToStation(ST_D)) printSound();
@@ -420,16 +426,19 @@ void runAll() {
   goToStation(ST_IND_HI);  delay(1000);
 
   Pose hover, press;
-  if (stationPose(ST_E_PRESS, press) && stationPose(ST_E_HOVER, hover)) {
+  if (stationPose(ST_E_PRESS, press)) {
+    hover = press;   // same pose with only the second arm tilted up off the button
+    hover.a[J_ELBOW] = min(press.a[J_ELBOW] + PRESS_LIFT_DEG, REL_MAX[J_ELBOW]);
     goToPose(hover, "Point E (above the button)");
-    Serial.print(F("Each press moves the pusher ")); Serial.print(ST_E_HOVER.standoff - ST_E_PRESS.standoff, 0);
-    Serial.println(F(" mm straight down onto the button and back up."));
+    Serial.print(F("Each press tilts the second arm ")); Serial.print(hover.a[J_ELBOW] - press.a[J_ELBOW], 1);
+    Serial.println(F(" degrees down onto the button and back up."));
+    // Same timing as pressFor() in arm_controller.ino
     Serial.println(F("Short press on the button (600 ms, a Morse dot)."));
-    unsigned long ramp = moveTo(press, 300);   // same timing as a 600 ms dot in arm_controller
-    delay(max(0L, 600L - (long)ramp)); moveTo(hover, 300); delay(900);
+    unsigned long ramp = moveAtSpeed(press, 300, PRESS_SPEED_DEG_S);
+    delay(max(0L, 600L - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp))); moveAtSpeed(hover, 300, PRESS_SPEED_DEG_S); delay(1500);
     Serial.println(F("Long press on the button (1800 ms, a Morse dash)."));
-    ramp = moveTo(press, 300);                 // same as a 1800 ms dash
-    delay(max(0L, 1800L - (long)ramp)); moveTo(hover, 300); delay(900);
+    ramp = moveAtSpeed(press, 300, PRESS_SPEED_DEG_S);
+    delay(max(0L, 1800L - (long)(2 * (1 - PRESS_CLOSE_AT) * ramp))); moveAtSpeed(hover, 300, PRESS_SPEED_DEG_S); delay(1500);
     printPosition("Point E (above the button)");
   }
 

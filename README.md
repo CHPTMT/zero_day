@@ -27,7 +27,7 @@ Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm ab
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
 | Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
 
-The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A and B, colour sensor 15 mm from the paper at C, sound sensor 40 mm from D, pusher 40 mm above the button at E, pressing 8 mm in.
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A and 70 mm from B, colour sensor 15 mm from the paper at C, sound sensor 40 mm from D, at E the second arm tilts 18 degrees for each press, the pusher dropping 52 mm to 8 mm into the button.
 
 ## Stations (theta deg, R mm, Z mm)
 
@@ -44,7 +44,7 @@ The controller works out the joint angles for each station from these dimensions
 
 `arm_controller` is a switch-case state machine: START, TASK1 to TASK4, FINISH, IDLE. Every sensor read has a timeout (ultrasonic 25 ms per ping, sound 3 s) and a safe default, so a bad reading never stops the run. Each task can be turned off with `RUN_TASK_x` as a fallback.
 
-The Morse timing is two times slower than first planned, to go easy on the arm: unit 600 ms, so a dot is 600 ms, a dash 1800 ms, 600 ms between the presses of a letter and 1800 ms between letters. Each press eases onto the button and off it over 300 ms instead of snapping. Both receivers split dots from dashes, and letters, at 1200 ms: `morse_receiver` (the repo version) and `morse_receiver_i2c` (the team's version, with its thresholds updated to `DOT_MAX` 1200, `LETTER_GAP` 1200, `WORD_TIMEOUT` 6000). A simulation of the eased arm presses into both receivers decodes all 10 brief words, with the button closing anywhere from 20% to 90% of the way down and with contact bounce.
+The Morse timing is two times slower than first planned, to go easy on the arm: unit 600 ms, so a dot is 600 ms, a dash 1800 ms, 600 ms between the presses of a letter and 1800 ms between letters. Each press is the second arm tilting 18 degrees onto the button and off it, eased over about 470 ms instead of snapping. Both receivers split dots from dashes at 1100 ms and end a letter after 1300 ms of silence: `morse_receiver` (the repo version) and `morse_receiver_i2c` (the team's version, with its thresholds updated to `DOT_MAX` 1100, `LETTER_GAP` 1300, `WORD_TIMEOUT` 4000). A simulation of the pusher's motion decodes every test word with the button switching anywhere from 0.5 to 7.5 mm before the bottom of the press.
 
 Wiring: `docs/wiring.md`. Calibration order and day checklist: `docs/demo_day.md`.
 

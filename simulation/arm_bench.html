@@ -376,7 +376,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   var ZERO = [0, 0, 0];
   var ST = {
     A:      { name: 'A',       theta: 10,  r: 350, z: 320, s: 100, tool: TOOLS.US },
-    B:      { name: 'B',       theta: 10,  r: 350, z: 150, s: 100, tool: TOOLS.US },
+    B:      { name: 'B',       theta: 10,  r: 350, z: 150, s: 70,  tool: TOOLS.US },
     C:      { name: 'C',       theta: 55,  r: 200, z: 70,  s: 15,  tool: TOOLS.RGB },
     D:      { name: 'D',       theta: 100, r: 275, z: 250, s: 40,  tool: TOOLS.SND },
     INDLO:  { name: 'ind low', theta: 110, r: 275, z: 150, s: 60,  tool: TOOLS.US },
@@ -385,7 +385,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     EP:     { name: 'E press', theta: 170, r: 250, z: 300, s: -8,  tool: TOOLS.PUSH }
   };
   var IND = { theta: 110, r: 275, zLo: 150, zHi: 350, s: 60 };
-  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 40, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
+  var US_MIN = 3, US_MAX = 15, GEST_UP = 70, BOX_LIFT = 60, PRESS_LIFT = 18, PRESS_SPEED = 60, CLOSE_AT = 0.77, GEST_PAUSE = 400, AMP_MIN = 40, AMP_MAX = 600, UNIT = 600, PRESS_MOVE = 300, GEST = 15, GEST_MS = 900, GEST_REPS = 2, HOLD = 2000;
   var WORDS = ['NET', 'PET', 'SET', 'TAP', 'PAN', 'TAN', 'TEN', 'PEN', 'RAT', 'SAT'];
   var MORSE = { A: '.-', E: '.', N: '-.', P: '.--.', R: '.-.', S: '...', T: '-' };
   var RAD = Math.PI / 180;
@@ -821,10 +821,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     });
   }
   var MAX_SPEED = 30;   // deg/s, same as MAX_SPEED_DEG_S in the sketches
-  function moveTo(p, ms, id) {
+  function moveTo(p, ms, id, topSpeed) {
     var start = cur.slice(), far = 0;
     for (var q = 0; q < 3; q++) far = Math.max(far, Math.abs(p[q] - start[q]));
-    var dur = Math.max(ms, far * 1571 / MAX_SPEED) / speed, t0 = performance.now();
+    var dur = Math.max(ms, far * 1571 / (topSpeed || MAX_SPEED)) / speed, t0 = performance.now();
     return new Promise(function (res, rej) {
       function step(now) {
         if (id !== runId) return rej(new Stop());
@@ -852,10 +852,13 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
   // Same as liftClear(): back to the travel pose between A and B
   async function liftClear(id) {
-    log('Lifting clear before the next point.');
+    log('Leaving the point: lifting up and turning towards the front.');
     await moveTo([cur[0], 0, 15], 1200, id);
+    await moveTo([cur[0] - (cur[0] > 0 ? 25 : -25), 0, 15], 1500, id);
     await sleep(HOLD / 2, id);
   }
+  // Point E: the press pose from the maths; the hover is the same pose with the second arm tilted up
+  function eHover2(prs) { var h = prs.slice(); h[2] = Math.min(prs[2] + PRESS_LIFT, MAX[2]); return h; }
   // Same as setTipHeight(): lean only the main arm until the pusher tip is at height want
   function setTipHeight(p, want) {
     var lo = MIN[1], hi = MAX[1];
@@ -911,7 +914,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
 
   /* ============ simulated sensors ============ */
-  function distAt(present) { return present ? 10 + (Math.random() - 0.5) * 0.8 : -1; }
+  function distAt(present, cm) { return present ? (cm || 10) + (Math.random() - 0.5) * 0.8 : -1; }
   var PAPER = { R: [520, 190, 150, 900], G: [210, 380, 230, 860], B: [160, 250, 420, 870] };
   var TEMP = { R: 2600, G: 5600, B: 9800 };
   function nameOf(c) { return c === 'R' ? 'RED' : (c === 'G' ? 'GREEN' : 'BLUE'); }
@@ -948,8 +951,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       setLive('dist', 'A ' + (dA < 0 ? 'no echo' : f(dA) + ' cm') + (rA ? ' object' : ' empty'));
       if (rA) await gestureYes(ST.A, id);
       await liftClear(id);
+      log('Going down to Point B, the lower point.');
       await goToStation(ST.B, id);
-      dB = distAt(obj === 'B' || obj === 'AB'); rB = dB >= US_MIN && dB <= US_MAX;
+      dB = distAt(obj === 'B' || obj === 'AB', ST.B.s / 10); rB = dB >= US_MIN && dB <= US_MAX;
       log(distLine('Point B', dB, rB));
       setLive('dist', 'B ' + (dB < 0 ? 'no echo' : f(dB) + ' cm') + (rB ? ' object' : ' empty'));
       if (rB) await gestureNo(id);
@@ -994,10 +998,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     // Task 4
     await runTask(4, async function () {
       log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
-      var prs = stationPose(ST.EP), hov = stationPose(ST.EH), ramp = PRESS_MOVE;
+      var prs = stationPose(ST.EP), hov = eHover2(prs), ramp = PRESS_MOVE;
       setTarget(ST.EH, 'E button');
       await goToPose(hov, 'E hover', id);
-      log('Each press moves the pusher ' + (ST.EH.s - ST.EP.s) + ' mm down onto the button and back up (main arm ' + f(prs[1] - hov[1]) + ' degrees, second arm ' + f(prs[2] - hov[2]) + ' degrees).');
+      log('Each press tilts the second arm ' + f(hov[2] - prs[2]) + ' degrees down and back up: the pusher drops ' + f(toolPt(hov, TOOLS.PUSH).z - toolPt(prs, TOOLS.PUSH).z, 0) + ' mm onto the button.');
       log('Sending the word ' + word + ' in Morse code on the button.');
       for (var i = 0; i < word.length; i++) {
         var code = MORSE[word[i]], txt = '   Letter ' + word[i] + ':';
@@ -1005,15 +1009,15 @@ td.m { font-family: var(--mono); white-space: nowrap; }
           txt += code[c] === '.' ? ' short press (dot)' : ' long press (dash)';
           setLive('morse', word + ': ' + word[i] + ' ' + code.slice(0, c + 1));
           // eased onto the button, held, eased off (as pressFor() in arm_controller.ino)
-          btnOn = true; ramp = await moveTo(prs, PRESS_MOVE, id);
-          await sleep(Math.max(0, (code[c] === '.' ? UNIT : 3 * UNIT) - ramp), id);
-          await moveTo(hov, PRESS_MOVE, id); btnOn = false; render();
-          if (c < code.length - 1) await sleep(Math.max(0, UNIT - ramp), id);
+          btnOn = true; ramp = await moveTo(prs, PRESS_MOVE, id, PRESS_SPEED);
+          await sleep(Math.max(0, (code[c] === '.' ? UNIT : 3 * UNIT) - 2 * (1 - CLOSE_AT) * ramp), id);
+          await moveTo(hov, PRESS_MOVE, id, PRESS_SPEED); btnOn = false; render();
+          if (c < code.length - 1) await sleep(Math.max(0, UNIT - 2 * CLOSE_AT * ramp), id);
         }
         log(txt);
-        if (i < word.length - 1) await sleep(3 * UNIT - ramp, id);
+        if (i < word.length - 1) await sleep(Math.max(0, 3 * UNIT - 2 * CLOSE_AT * ramp), id);
       }
-      await sleep(8 * UNIT, id);
+      await sleep(6 * UNIT, id);
       log('Finished sending ' + word + '. The receiver should now show it on its screen.');
     }, id);
 
@@ -1103,7 +1107,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await sleep(5000, id);
     function dist(at) { var d = (obj === at || obj === 'AB') ? 10 + (Math.random() - 0.5) * 0.8 : -1; log('Point ' + at + (d < 0 ? ': no echo came back to the ultrasonic sensor (counts as nothing there).' : ': the ultrasonic sensor measures ' + f(d) + ' cm, which the demo counts as ' + (d >= US_MIN && d <= US_MAX ? 'an object.' : 'nothing there.'))); setLive('dist', at + ' ' + (d < 0 ? 'no echo' : f(d) + ' cm')); }
     if (await goToStation(ST.A, id)) { dist('A'); await gestureYes(ST.A, id); }
-    log('Lifting clear before Point B.'); await moveTo([cur[0], 0, 15], 1200, id); await sleep(HOLD / 2, id);
+    await liftClear(id); log('Going down to Point B, the lower point.');
     if (await goToStation(ST.B, id)) { dist('B'); await gestureNo(id); await gestureBox(ST.B, id); }
     if (await goToStation(ST.C, id)) {
       var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
@@ -1121,14 +1125,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     for (var k of [ST.INDLO, { name: 'ind mid', theta: 110, r: 275, z: 250, s: 60 }, ST.INDHI]) {
       await goToStation(k, id); await sleep(1000, id);
     }
-    var prs = stationPose(ST.EP), hov = stationPose(ST.EH), rp;
+    var prs = stationPose(ST.EP), hov = eHover2(prs), rp;
     setTarget(ST.EH, 'E button');
     await goToPose(hov, 'E hover', id);
-    log('Each press moves the pusher ' + (ST.EH.s - ST.EP.s) + ' mm straight down onto the button and back up.');
+    log('Each press tilts the second arm ' + f(hov[2] - prs[2]) + ' degrees down onto the button and back up.');
     log('Short press on the button (600 ms, a Morse dot).'); setLive('morse', 'short press');
-    btnOn = true; rp = await moveTo(prs, 300, id); await sleep(Math.max(0, 600 - rp), id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
+    btnOn = true; rp = await moveTo(prs, 300, id, PRESS_SPEED); await sleep(Math.max(0, 600 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, 300, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
     log('Long press on the button (1800 ms, a Morse dash).'); setLive('morse', 'long press');
-    btnOn = true; rp = await moveTo(prs, 300, id); await sleep(Math.max(0, 1800 - rp), id); await moveTo(hov, 300, id); btnOn = false; render(); await sleep(900, id);
+    btnOn = true; rp = await moveTo(prs, 300, id, PRESS_SPEED); await sleep(Math.max(0, 1800 - 2 * (1 - CLOSE_AT) * rp), id); await moveTo(hov, 300, id, PRESS_SPEED); btnOn = false; render(); await sleep(1500, id);
     posLine('E hover');
     setTarget(null);
     await goToPose(ZERO, 'zero', id);
