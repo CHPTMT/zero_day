@@ -6,11 +6,13 @@ Report any damaged servo or sensor to the tutors before 09:30, with photo or vid
 
 ## Order of testing (Sunday, on the same power supply as Monday)
 
-1. `test_servos`. Watch the 5 s zero hold: base forward, main arm upright, second arm level. Fix any joint that is off with its `SERVO_ZERO_xxx`. In the direction check the base must turn left, the main arm lean forward and the second arm tilt up; flip the `xxx_DIR` of any that do not. Copy the values into `arm_controller.ino` and `test_combined.ino`.
-2. `test_sensors`. Distance, colour and sound print together. Calibrate the colours with r, g, b on your own paper and the tap levels with t. Paste the printed values into `arm_controller.ino`.
-3. Pivot height is set to 130 mm above the table (20 mm platform plus 110 mm). If the arm is rebuilt, re-measure and update `SHOULDER_HEIGHT_MM` in both `arm_controller.ino` and `test_combined.ino`.
-4. `test_combined`. The arm visits every station and prints where it thinks the sensor is. If it is off at a station, adjust that station's trim values.
-5. `arm_controller`. Full runs with conditions changed: object at A only, B only, neither; each colour; soft and loud tap; different words.
+1. Rest position. Upload `arm_controller`, open the Serial Monitor (115200, New Line), press reset and type `ZERO` during the 5 s hold. Nudge each servo until the base faces forward, the main arm stands upright and the second arm is level: `b+`/`b-` base, `l` and `r` each main arm servo on its own (set them until neither buzzes), `m` both main arm servos together, `e` second arm; one `+` is about 1 degree, `++` about 5. Type `SAVE`, then `GO`. The values stay in EEPROM and `test_servos` and `test_combined` use them too.
+2. `test_servos`. In the direction check the base must turn left, the main arm lean forward and the second arm tilt up; flip the `xxx_DIR` of any that do not, in `arm_controller.ino`, `test_servos.ino` and `test_combined.ino`.
+3. Base gear. The base turns at 15 degrees per second at most so its gear is not forced out of the turntable groove. Fix the gear mechanically too: the servo mount must not flex away from the turntable, and the gear needs a lip or washer that holds it in the groove. Every time it jumps a tooth the base loses its rest position and every point is off by that much. If the servo gear and the turntable gear have different tooth counts, set `BASE_GEAR_RATIO` to turntable teeth divided by servo gear teeth.
+4. `test_sensors`. Distance, colour and sound print together. Calibrate the colours with r, g, b on your own paper and the tap levels with t. Paste the printed values into `arm_controller.ino`.
+5. Pivot height is set to 130 mm above the table (20 mm platform plus 110 mm). If the arm is rebuilt, re-measure and update `SHOULDER_HEIGHT_MM` in both `arm_controller.ino` and `test_combined.ino`.
+6. `test_combined`. The arm visits every station and prints where it thinks the sensor is. If it is off at a station, adjust that station's trim values.
+7. `arm_controller`. Full runs with conditions changed: object at A only, B only, neither; each colour; soft and loud tap; different words.
 
 ## What each point should look like
 
@@ -74,7 +76,7 @@ Stack books or boxes to each height and tape a 5 x 5 cm card at A and B facing t
 
 ## During the 10 minute slot
 
-- Press reset to start each attempt. A run takes about one minute.
+- Press reset to start each attempt. A run takes about two and a half minutes.
 - Run at least twice; the tutors change conditions between runs. The best attempt counts.
 - If one task keeps failing, set its `RUN_TASK_x` to false and upload so the other tasks still score.
 - One person films every attempt.

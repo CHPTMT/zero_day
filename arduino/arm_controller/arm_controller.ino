@@ -28,7 +28,10 @@
  *               always moved in opposite directions.
  *     2nd arm   0 = level with the ground when the main arm is upright,
  *               + = up (max +45), - = down (max -90)
- *   SERVO_ZERO_xxx holds the raw servo value that equals relative 0.
+ *   Each servo's rest position is a pulse width in microseconds (1500 = the
+ *   middle of the servo's travel). Set them on the arm: type ZERO during the
+ *   5 s rest hold, nudge each servo until the arm sits right, type SAVE. They
+ *   are kept in EEPROM and used every run after that.
  *   If a joint moves the wrong way, flip its xxx_DIR from 1 to -1.
  *
  * POSITIONING
@@ -42,6 +45,7 @@
  * QUICK EDITS ON THE DAY
  *   Word: type it in the Serial Monitor during the 5 s zero hold (e.g. NET).
  *         Saved in EEPROM. Or change DEFAULT_WORD.
+ *   Rest position: type ZERO during the 5 s zero hold (see SERVO REST POSITIONS).
  *   Fallback: set RUN_TASK_x to false to skip a task that keeps failing.
  *   Re-run: press the Uno reset button.
  *
@@ -86,18 +90,36 @@ const uint8_t PIN_BUZZER     = 11;   // beeper: + to D11, - to GND
 const uint8_t PIN_STATUS     = 13;   // onboard LED
 
 // ======================================================================
-// SERVO CALIBRATION
+// SERVO REST POSITIONS
 // ======================================================================
-// Raw servo value (0 to 180) at relative 0. Adjust until test_servos shows
-// the base facing forward, the main arm upright and the second arm level.
-const int SERVO_ZERO_BASE  = 90;
-const int SERVO_ZERO_LEFT  = 90;
-const int SERVO_ZERO_RIGHT = 90;
-const int SERVO_ZERO_ELBOW = 90;
+// Pulse width (microseconds) that holds each servo at the rest position:
+// base facing forward, main arm upright, second arm level. 1500 us is the
+// true middle of a standard servo's travel (500 to 2500 us = 0 to 180 deg).
+// These are only the starting values. Set the real ones on the arm:
+//   1. Open the Serial Monitor (115200, New Line) and press reset.
+//   2. During the 5 s rest hold type ZERO and press Enter.
+//   3. Nudge each servo (b = base, l = main arm left servo, r = main arm right
+//      servo, m = both main arm servos together, e = second arm):
+//        b+ / b-    about 1 degree       b++ / b--  about 5 degrees
+//   4. Type SAVE (kept in EEPROM, used every run after this), then GO.
+// The two main arm servos face each other: set each one on its own (l and r)
+// until neither buzzes, then use m to stand the arm upright.
+enum ServoId : uint8_t { S_BASE = 0, S_LEFT = 1, S_RIGHT = 2, S_ELBOW = 3, NS = 4 };
+const int   ZERO_US_DEFAULT[NS] = {1500, 1500, 1500, 1500};   // base, main left, main right, second arm
+const float US_PER_DEG   = 1000.0 / 90.0;   // about 11 us per degree
+const int   SERVO_MIN_US = 500;
+const int   SERVO_MAX_US = 2500;
+const int   ZERO_STEP_US = 10;              // one nudge, about 1 degree
+const char *SERVO_NAMES[NS] = {"base", "main arm left", "main arm right", "second arm"};
+int zeroUs[NS];                             // filled from EEPROM at start up
 
 // Direction of each joint. Flip to -1 if the joint moves the wrong way.
 // MAIN_DIR = 1 means: forward = left servo value goes up, right servo goes down.
 const int8_t BASE_DIR  = 1;
+// Base drive: the servo turns the turntable through a gear. Servo degrees for
+// one degree of turntable: 1.0 if both gears have the same number of teeth,
+// otherwise (turntable teeth) / (servo gear teeth).
+const float  BASE_GEAR_RATIO = 1.0;
 const int8_t MAIN_DIR  = 1;
 const int8_t ELBOW_DIR = 1;
 
@@ -185,6 +207,7 @@ const uint16_t MOVE_MS      = 1200;
 const uint16_t BASE_TURN_MS = 1500;
 const uint8_t  STEP_MS      = 20;    // one servo update per 20 ms servo frame
 const float    MAX_SPEED_DEG_S = 30;  // top joint speed. Lower it for slower, gentler moves
+const float    BASE_MAX_SPEED_DEG_S = 15;   // the base turns slower so its gear is not forced out of the turntable groove
 const uint16_t SETTLE_MS    = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point this long before doing anything there
 const bool     USE_TRAVEL   = true;          // lift before turning the base
@@ -294,15 +317,11 @@ int  resultLevel = 0;
 // ======================================================================
 // SERVO OUTPUT
 // ======================================================================
-int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
-
-// Servo pulse for an angle, keeping fractions of a degree. write() only moves
-// in whole degrees, which makes slow moves step visibly; writeMicroseconds()
-// moves in about 0.1 degree steps. 544 and 2400 us are the Servo library's own
-// 0 and 180 degree pulses, so the angles match what write() would give.
-int pulseFor(float deg) {
-  deg = constrain(deg, 0.0, 180.0);
-  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+// Pulse for servo s turned deg degrees from its rest position. Pulses move in
+// about 0.1 degree steps, so slow moves stay smooth.
+int pulseAt(uint8_t s, float deg) {
+  float us = zeroUs[s] + deg * US_PER_DEG;
+  return constrain((int)round(us), SERVO_MIN_US, SERVO_MAX_US);
 }
 
 // Set one joint to a relative angle. The main arm writes both servos in
@@ -312,14 +331,14 @@ void writeJoint(uint8_t j, float rel) {
   cur.a[j] = rel;
   switch (j) {
     case J_BASE:
-      sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
+      sBase.writeMicroseconds(pulseAt(S_BASE, BASE_DIR * BASE_GEAR_RATIO * rel));
       break;
     case J_MAIN:
-      sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
-      sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
+      sLeft.writeMicroseconds(pulseAt(S_LEFT, MAIN_DIR * rel));
+      sRight.writeMicroseconds(pulseAt(S_RIGHT, -MAIN_DIR * rel));
       break;
     case J_ELBOW:
-      sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
+      sElbow.writeMicroseconds(pulseAt(S_ELBOW, ELBOW_DIR * rel));
       break;
   }
 }
@@ -338,6 +357,9 @@ unsigned long moveAtSpeed(const Pose &target, uint16_t ms, float topSpeed) {
   float far = 0;
   for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
   unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / topSpeed));
+  // The base has its own, lower speed limit to protect its gear.
+  float baseFar = fabs(target.a[J_BASE] - start.a[J_BASE]);
+  dur = max(dur, (unsigned long)(baseFar * 1571.0 / min(topSpeed, BASE_MAX_SPEED_DEG_S)));
   uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
@@ -838,14 +860,87 @@ void loadWord() {
   if (!validWord(targetWord)) strcpy(targetWord, DEFAULT_WORD);
 }
 
+// Rest positions in EEPROM: a marker byte, then four 16 bit pulse widths.
+const int     EE_ZERO_MARK_ADDR = 8;
+const int     EE_ZERO_ADDR      = 10;
+const uint8_t EE_ZERO_MARK      = 0x5A;
+
+void loadZeros() {
+  bool saved = EEPROM.read(EE_ZERO_MARK_ADDR) == EE_ZERO_MARK;
+  for (uint8_t i = 0; i < NS; i++) {
+    int16_t v = ZERO_US_DEFAULT[i];
+    if (saved) EEPROM.get(EE_ZERO_ADDR + 2 * i, v);
+    zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
+  }
+}
+
+void saveZeros() {
+  for (uint8_t i = 0; i < NS; i++) EEPROM.put(EE_ZERO_ADDR + 2 * i, (int16_t)zeroUs[i]);
+  EEPROM.update(EE_ZERO_MARK_ADDR, EE_ZERO_MARK);
+}
+
+void printZeros() {
+  Serial.print(F("Rest position pulses: "));
+  for (uint8_t i = 0; i < NS; i++) {
+    Serial.print(SERVO_NAMES[i]); Serial.print(' '); Serial.print(zeroUs[i]); Serial.print(F(" us"));
+    Serial.print(i < NS - 1 ? F(", ") : F(".\n"));
+  }
+}
+
+// Interactive set-up of the rest position. The arm holds zero and each
+// command nudges one servo, so the result is seen straight away.
+void setRestPosition() {
+  Serial.println(F("\nREST POSITION SET-UP. Nudge each servo until the base faces forward, the main arm"));
+  Serial.println(F("stands upright and the second arm is level. Commands (press Enter after each):"));
+  Serial.println(F("  b+ b- b++ b--   base (1 or 5 degrees)"));
+  Serial.println(F("  l+ l- l++ l--   main arm left servo on its own"));
+  Serial.println(F("  r+ r- r++ r--   main arm right servo on its own"));
+  Serial.println(F("  m+ m- m++ m--   both main arm servos together (leans the main arm)"));
+  Serial.println(F("  e+ e- e++ e--   second arm"));
+  Serial.println(F("  SAVE  keep these values    RESET  back to 1500 us    GO  start the run"));
+  writePose(ZERO_POSE);
+  printZeros();
+  char buf[8];
+  uint8_t n = 0;
+  while (true) {
+    if (!Serial.available()) continue;
+    char c = tolower(Serial.read());
+    if (c != '\n' && c != '\r') { if (n < 7) buf[n++] = c; continue; }
+    buf[n] = '\0';
+    n = 0;
+    if (buf[0] == '\0') continue;
+    if (strcmp(buf, "go") == 0) { Serial.println(F("Leaving the rest position set-up.")); return; }
+    if (strcmp(buf, "save") == 0) { saveZeros(); Serial.println(F("Saved. These rest positions are used from now on.")); continue; }
+    if (strcmp(buf, "reset") == 0) {
+      for (uint8_t i = 0; i < NS; i++) zeroUs[i] = ZERO_US_DEFAULT[i];
+    } else {
+      const char *rest = buf + 1;
+      int step = strcmp(rest, "+") == 0 ? 1 : strcmp(rest, "-") == 0 ? -1 :
+                 strcmp(rest, "++") == 0 ? 5 : strcmp(rest, "--") == 0 ? -5 : 0;
+      step *= ZERO_STEP_US;
+      if (step == 0) { Serial.println(F("Not recognised. Try b+, l-, r++, m--, e+, SAVE, RESET or GO.")); continue; }
+      if (buf[0] == 'b') zeroUs[S_BASE] += step;
+      else if (buf[0] == 'l') zeroUs[S_LEFT] += step;
+      else if (buf[0] == 'r') zeroUs[S_RIGHT] += step;
+      else if (buf[0] == 'e') zeroUs[S_ELBOW] += step;
+      else if (buf[0] == 'm') { zeroUs[S_LEFT] += MAIN_DIR * step; zeroUs[S_RIGHT] -= MAIN_DIR * step; }
+      else { Serial.println(F("Not recognised. Try b+, l-, r++, m--, e+, SAVE, RESET or GO.")); continue; }
+      for (uint8_t i = 0; i < NS; i++) zeroUs[i] = constrain(zeroUs[i], SERVO_MIN_US, SERVO_MAX_US);
+    }
+    writePose(ZERO_POSE);
+    printZeros();
+  }
+}
+
 // Hold the zero pose for ZERO_HOLD_MS. Any 3 letter word typed in that
-// time becomes the target word.
+// time becomes the target word; ZERO opens the rest position set-up.
 void holdZeroAndReadWord() {
   Serial.print(F("Holding the rest position for "));
   Serial.print(ZERO_HOLD_MS / 1000);
   Serial.println(F(" seconds: base facing forward, main arm upright, second arm level."));
   Serial.print(F("The Morse word for Point E is ")); Serial.print(targetWord);
   Serial.println(F(". To change it, type a new 3-letter word now and press Enter."));
+  Serial.println(F("To adjust the rest position of the servos, type ZERO and press Enter."));
   char buf[8];
   uint8_t n = 0;
   unsigned long start = millis();
@@ -854,6 +949,7 @@ void holdZeroAndReadWord() {
     char c = toupper(Serial.read());
     if (c == '\n' || c == '\r') {
       buf[min(n, (uint8_t)7)] = '\0';
+      if (strcmp(buf, "ZERO") == 0) { setRestPosition(); return; }
       if (n == 3 && validWord(buf)) {
         strcpy(targetWord, buf);
         for (uint8_t i = 0; i < 3; i++) EEPROM.update(i, targetWord[i]);
@@ -1007,12 +1103,15 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   setColourLed('-');
 
-  // Write zero before attaching so nothing jumps on power up.
+  // Load the rest positions and write them before attaching, so each servo
+  // goes straight to its rest position on power up. The 500 to 2500 us range
+  // lets every servo reach its full travel (the library default is 544 to 2400).
+  loadZeros();
   writePose(ZERO_POSE);
-  sBase.attach(PIN_BASE);
-  sLeft.attach(PIN_MAIN_LEFT);
-  sRight.attach(PIN_MAIN_RIGHT);
-  sElbow.attach(PIN_ELBOW);
+  sBase.attach(PIN_BASE, SERVO_MIN_US, SERVO_MAX_US);
+  sLeft.attach(PIN_MAIN_LEFT, SERVO_MIN_US, SERVO_MAX_US);
+  sRight.attach(PIN_MAIN_RIGHT, SERVO_MIN_US, SERVO_MAX_US);
+  sElbow.attach(PIN_ELBOW, SERVO_MIN_US, SERVO_MAX_US);
   writePose(ZERO_POSE);
 
   Serial.println(F("\nGroup 21 robotic arm: demonstration program starting."));
@@ -1022,6 +1121,7 @@ void setup() {
 
   ledCheck();
   loadWord();
+  printZeros();
   printPosition("the rest position");
   holdZeroAndReadWord();
   Serial.print(F("Using the Morse word ")); Serial.print(targetWord); Serial.println('.');

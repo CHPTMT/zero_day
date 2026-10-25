@@ -23,6 +23,7 @@
 
 #include <Servo.h>
 #include <Wire.h>
+#include <EEPROM.h>
 #include "src/Adafruit_TCS34725.h"   // bundled in src/, nothing to install
 
 // ---------------- pins ----------------
@@ -30,8 +31,30 @@ const uint8_t PIN_BASE = 2, PIN_MAIN_LEFT = 3, PIN_MAIN_RIGHT = 4, PIN_ELBOW = 5
 const uint8_t PIN_US_ECHO = 6, PIN_US_TRIG = 7, PIN_SOUND = A1;
 
 // ---------------- servo calibration ----------------
-const int SERVO_ZERO_BASE = 90, SERVO_ZERO_LEFT = 90, SERVO_ZERO_RIGHT = 90, SERVO_ZERO_ELBOW = 90;
 const int8_t BASE_DIR = 1, MAIN_DIR = 1, ELBOW_DIR = 1;
+// Rest positions (pulse width in microseconds, 1500 = middle of the servo's
+// travel). Read from the EEPROM values saved by arm_controller's ZERO set-up,
+// so every sketch uses the same rest position. Same as arm_controller.ino.
+enum ServoId : uint8_t { S_BASE = 0, S_LEFT = 1, S_RIGHT = 2, S_ELBOW = 3, NS = 4 };
+const int   ZERO_US_DEFAULT[NS] = {1500, 1500, 1500, 1500};
+const float US_PER_DEG = 1000.0 / 90.0;
+const int   SERVO_MIN_US = 500, SERVO_MAX_US = 2500;
+const float BASE_GEAR_RATIO = 1.0;
+int zeroUs[NS];
+
+void loadZeros() {
+  bool saved = EEPROM.read(8) == 0x5A;
+  for (uint8_t i = 0; i < NS; i++) {
+    int16_t v = ZERO_US_DEFAULT[i];
+    if (saved) EEPROM.get(10 + 2 * i, v);
+    zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
+  }
+}
+
+int pulseAt(uint8_t s, float deg) {
+  return constrain((int)round(zeroUs[s] + deg * US_PER_DEG), SERVO_MIN_US, SERVO_MAX_US);
+}
+
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
@@ -75,6 +98,7 @@ const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
+const float BASE_MAX_SPEED_DEG_S = 15; // slower base, to keep its gear in the turntable groove
 const float PRESS_LIFT_DEG = 18, PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.77;
 const float LIFT_TURN_DEG = 25;
 const float GESTURE_UP_MM = 70;          // same as arm_controller.ino
@@ -93,25 +117,15 @@ Adafruit_TCS34725 tcs(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
 bool tcsOk = false;
 
 // ---------------- servos ----------------
-int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
-
-// Servo pulse for an angle, keeping fractions of a degree. write() only moves
-// in whole degrees, which makes slow moves step visibly; writeMicroseconds()
-// moves in about 0.1 degree steps. 544 and 2400 us are the Servo library's own
-// 0 and 180 degree pulses, so the angles match what write() would give.
-int pulseFor(float deg) {
-  deg = constrain(deg, 0.0, 180.0);
-  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
-}
 
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
   cur.a[j] = rel;
-  if (j == J_BASE) sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
+  if (j == J_BASE) sBase.writeMicroseconds(pulseAt(S_BASE, BASE_DIR * BASE_GEAR_RATIO * rel));
   else if (j == J_MAIN) {
-    sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
-    sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
-  } else sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
+    sLeft.writeMicroseconds(pulseAt(S_LEFT, MAIN_DIR * rel));
+    sRight.writeMicroseconds(pulseAt(S_RIGHT, -MAIN_DIR * rel));
+  } else sElbow.writeMicroseconds(pulseAt(S_ELBOW, ELBOW_DIR * rel));
 }
 
 void writePose(const Pose &p) { for (uint8_t j = 0; j < NJ; j++) writeJoint(j, p.a[j]); }
@@ -124,6 +138,8 @@ unsigned long moveAtSpeed(const Pose &target, uint16_t ms, float topSpeed) {
   float far = 0;
   for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
   unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / topSpeed));
+  float baseFar = fabs(target.a[J_BASE] - start.a[J_BASE]);
+  dur = max(dur, (unsigned long)(baseFar * 1571.0 / min(topSpeed, BASE_MAX_SPEED_DEG_S)));
   uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
@@ -450,11 +466,12 @@ void setup() {
   Serial.begin(115200);
   pinMode(PIN_US_TRIG, OUTPUT);
   pinMode(PIN_US_ECHO, INPUT);
+  loadZeros();
   writePose(ZERO_POSE);
-  sBase.attach(PIN_BASE);
-  sLeft.attach(PIN_MAIN_LEFT);
-  sRight.attach(PIN_MAIN_RIGHT);
-  sElbow.attach(PIN_ELBOW);
+  sBase.attach(PIN_BASE, SERVO_MIN_US, SERVO_MAX_US);
+  sLeft.attach(PIN_MAIN_LEFT, SERVO_MIN_US, SERVO_MAX_US);
+  sRight.attach(PIN_MAIN_RIGHT, SERVO_MIN_US, SERVO_MAX_US);
+  sElbow.attach(PIN_ELBOW, SERVO_MIN_US, SERVO_MAX_US);
   writePose(ZERO_POSE);
   tcsOk = tcs.begin();
   runAll();
