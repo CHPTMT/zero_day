@@ -294,7 +294,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
           <button class="btn stop" id="stopBtn" type="button" disabled>Stop</button>
           <button class="btn" id="speedBtn" type="button">Speed 1x</button>
         </div>
-        <div class="status"><span id="stateTxt">Idle</span><span>LED lights: red D8, green D9, blue D10, then the button</span></div>
+        <div class="status"><span id="stateTxt">Idle</span><span>RGB LED: red D8, green D9, blue D10 (pin LOW = on), then the button</span></div>
       </div>
 
       <div class="termwrap">
@@ -909,11 +909,14 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     // Task 2
     log(''); log('TASK 2 of 4: reading the colour of the paper at Point C.', 'h');
     await goToStation(ST.C, id);
+    log('The RGB LED now follows what the colour sensor sees for 2 seconds.');
+    leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
+    await sleep(2000, id);
     var pr = PAPER[col], s = pr[0] + pr[1] + pr[2];
     log('Colour sensor readings: red ' + pr[0] + ', green ' + pr[1] + ', blue ' + pr[2] + ', overall brightness ' + pr[3] + '.');
     log('Colour temperature ' + TEMP[col] + ' K, light level ' + Math.round(pr[1] * 0.3) + ' lux, strongest colour channel: ' + nameOf(col) + '.');
     log('Share of each colour: red ' + Math.floor(pr[0] * 100 / s) + '%, green ' + Math.floor(pr[1] * 100 / s) + '%, blue ' + Math.floor(pr[2] * 100 / s) + '%.');
-    log('Point C: the paper is ' + nameOf(col) + '. Switching on the ' + nameOf(col) + ' LED.');
+    log('Point C: the paper is ' + nameOf(col) + '. The RGB LED now shows ' + nameOf(col) + '.');
     setLive('col', nameOf(col) + ', ' + TEMP[col] + ' K');
     leds = { R: col === 'R', G: col === 'G', B: col === 'B' }; render();
 
@@ -1071,9 +1074,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
 
   var SKETCHES = {
-    demo: { fn: demo, label: 'Running arm_controller', desc: 'The marked run. Holds zero for 5 s (type the word then), scans A and B with the ultrasonic and gestures YES, NO or BOX, reads the paper at C and lights its LED, listens at D and points at a height on the indicator, then taps the word in Morse at E and prints a summary. Uses all four test conditions.' },
+    demo: { fn: demo, label: 'Running arm_controller', desc: 'The marked run. Holds zero for 5 s (type the word then), scans A and B with the ultrasonic and gestures YES, NO or BOX, reads the paper at C and the RGB LED shows its colour, listens at D and points at a height on the indicator, then taps the word in Morse at E and prints a summary. Uses all four test conditions.' },
     servos: { fn: testServos, label: 'Running test_servos', desc: 'Servos only, no sensors. Holds zero for 5 s, nudges each joint +10 so you can check direction (base left, main forward, 2nd up), then sweeps every joint through its full range at 1 degree per 20 ms. Watch the raw L and R values move in opposite directions.' },
-    sensors: { fn: testSensors, label: 'Running test_sensors', desc: 'Sensors only, the arm stays still. Prints distance, colour (raw, normalised, class, temperature, primary colour) and sound level every half second, and lights the matching LED. Uses the object, paper and tap conditions.' },
+    sensors: { fn: testSensors, label: 'Running test_sensors', desc: 'Sensors only, the arm stays still. Prints distance, colour (raw, normalised, class, temperature, primary colour) and sound level every half second, and the RGB LED shows the colour the sensor sees. Uses the object, paper and tap conditions.' },
     combined: { fn: testCombined, label: 'Running test_combined', desc: 'Every movement of the demonstration with no decisions: each station, all three gestures, the indicator at low, middle and high, and one dot and one dash press at E. Prints the angles and a sensor reading at every stop.' }
   };
   function showDesc() { $('sketchDesc').textContent = SKETCHES[$('sketch').value].desc; }
@@ -1219,17 +1222,18 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   W('tcs', 'SCL', [985, 586], unoPins['A5'], '--w-green', 'A5');
   W('tcs', 'VIN', [1005, 586], rail(17, 'bot+'), '--w-red', 'bottom rail +');
   W('tcs', 'GND', [1025, 586], rail(18, 'bot-'), '--w-black', 'bottom rail -');
-  // LEDs on the breadboard: anode row e, cathode row f via resistor to bottom rail -
-  [['ledR', 'Red LED', 'D8', 6, '--led-r'], ['ledG', 'Green LED', 'D9', 10, '--led-g'], ['ledB', 'Blue LED', 'D10', 14, '--led-b']].forEach(function (l) {
-    W(l[0], 'anode (long leg), row ' + l[3] + 'a', unoPins[l[2]], hole(l[3], 'a'), '--w-green', l[2], 'led');
-    W(l[0], '220 ohm, row ' + (l[3] + 1) + 'j to rail', hole(l[3] + 1, 'j'), rail(l[3] + 1, 'bot-'), '--w-black', 'bottom rail -');
+  // RGB LED, common anode: legs in row b (red 6, anode 8, green 10, blue 12).
+  // Each colour leg crosses the gap through a 220 ohm resistor; the pin wire lands in row j.
+  W('ledA', 'anode (long leg), row 8j', hole(8, 'j'), rail(8, 'bot+'), '--w-red', 'bottom rail + (5 V)');
+  [['ledR', 'red leg, 220 ohm, row 6j', 'D8', 6], ['ledG', 'green leg, 220 ohm, row 10j', 'D9', 10], ['ledB', 'blue leg, 220 ohm, row 12j', 'D10', 12]].forEach(function (l) {
+    W(l[0], l[1], unoPins[l[2]], hole(l[3], 'j'), '--w-green', l[2], 'led');
   });
 
   function wirePath(w) {
     var a = w.a, b = w.b;
     if (w.via === 'side') return 'M ' + a[0] + ' ' + a[1] + ' H ' + (a[0] + 24) + ' V ' + b[1] + ' H ' + b[0];
     if (w.via === 'servo') return 'M ' + a[0] + ' ' + a[1] + ' V ' + (a[1] + 18 + (a[0] % 7)) + ' H ' + (UNO.x + UNO.w + 20 + (a[0] % 60)) + ' V ' + b[1] + ' H ' + b[0];
-    if (w.via === 'led') { var lx = UNO.x + UNO.w + 40 + (a[1] - UNO.y) / 3; return 'M ' + a[0] + ' ' + a[1] + ' H ' + lx + ' V ' + (b[1] - 12) + ' H ' + b[0] + ' V ' + b[1]; }
+    if (w.via === 'led') { var li = (a[1] - unoPins.D8[1]) / 24, lx = UNO.x + UNO.w + 60 - li * 14; return 'M ' + a[0] + ' ' + a[1] + ' H ' + lx + ' V ' + (b[1] + 34 - li * 10) + ' H ' + b[0] + ' V ' + b[1]; }
     if (Math.abs(a[1] - b[1]) < 4) return 'M ' + a[0] + ' ' + a[1] + ' H ' + b[0];
     if (a[0] > 930) { var lane = 900 + ((a[0] / 5) % 8) * 4; return 'M ' + a[0] + ' ' + a[1] + ' V ' + (a[1] + 10) + ' H ' + lane + ' V ' + b[1] + ' H ' + b[0]; }
     return 'M ' + a[0] + ' ' + a[1] + ' V ' + ((a[1] + b[1]) / 2) + ' H ' + b[0] + ' V ' + b[1];
@@ -1254,15 +1258,20 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h += '<rect x="' + (BB.x + 18) + '" y="' + (ch - 4) + '" width="' + (bw - 36) + '" height="8" fill="var(--bb-hole)" opacity="0.6"/>';
     h += '<text class="t-txt" x="' + (BB.x + bw - 6) + '" y="' + (BB.y + 14) + '" text-anchor="end">servo power</text>';
     h += '<text class="t-txt" x="' + (BB.x + bw - 6) + '" y="' + (rail(1, 'bot-')[1] + 20) + '" text-anchor="end">sensor power</text>';
-    // LEDs and resistors on the board
-    [[6, '--led-r'], [10, '--led-g'], [14, '--led-b']].forEach(function (l) {
-      var a = hole(l[0], 'e'), k = hole(l[0] + 1, 'e'), f1 = hole(l[0] + 1, 'f'), j = hole(l[0] + 1, 'j');
-      h += '<line x1="' + a[0] + '" y1="' + hole(l[0], 'a')[1] + '" x2="' + a[0] + '" y2="' + a[1] + '" stroke="var(--muted)" stroke-width="1"/>';
-      h += '<circle cx="' + ((a[0] + k[0]) / 2) + '" cy="' + (a[1] - 14) + '" r="10" fill="var(' + l[1] + ')" stroke="var(--ink)"/>';
-      h += '<line x1="' + a[0] + '" y1="' + (a[1] - 6) + '" x2="' + a[0] + '" y2="' + a[1] + '" stroke="var(--ink)"/>';
-      h += '<line x1="' + k[0] + '" y1="' + (k[1] - 6) + '" x2="' + k[0] + '" y2="' + k[1] + '" stroke="var(--ink)"/>';
-      h += '<rect x="' + (f1[0] - 5) + '" y="' + (f1[1] + 4) + '" width="10" height="' + (j[1] - f1[1] - 8) + '" rx="3" fill="#d9b98c" stroke="var(--ink)"/>';
-      h += '<line x1="' + k[0] + '" y1="' + k[1] + '" x2="' + f1[0] + '" y2="' + f1[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
+    // RGB LED (common anode) and its three resistors across the centre gap
+    var lc = hole(9, 'a');
+    [6, 8, 10, 12].forEach(function (c) {
+      var b = hole(c, 'b');
+      h += '<line x1="' + lc[0] + '" y1="' + (lc[1] - 6) + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
+    });
+    h += '<circle cx="' + lc[0] + '" cy="' + (lc[1] - 14) + '" r="13" fill="#f4f1ea" stroke="var(--ink)"/>';
+    h += '<text class="t-txt" x="' + lc[0] + '" y="' + (lc[1] - 10) + '" text-anchor="middle">RGB</text>';
+    var jf = hole(8, 'e'), jt = hole(8, 'f');
+    h += '<line x1="' + jf[0] + '" y1="' + jf[1] + '" x2="' + jt[0] + '" y2="' + jt[1] + '" stroke="var(--w-red)" stroke-width="2.6"/>';
+    [[6, '--led-r'], [10, '--led-g'], [12, '--led-b']].forEach(function (l) {
+      var e = hole(l[0], 'e'), f1 = hole(l[0], 'f');
+      h += '<line x1="' + e[0] + '" y1="' + e[1] + '" x2="' + f1[0] + '" y2="' + f1[1] + '" stroke="var(--ink)" stroke-width="1.5"/>';
+      h += '<rect x="' + (e[0] - 5) + '" y="' + (e[1] + 6) + '" width="10" height="' + (f1[1] - e[1] - 12) + '" rx="3" fill="#d9b98c" stroke="var(' + l[1] + ')" stroke-width="2"/>';
     });
     // Uno
     h += '<rect x="' + UNO.x + '" y="' + UNO.y + '" width="' + UNO.w + '" height="' + UNO.h + '" rx="8" fill="var(--board)"/>';
@@ -1311,7 +1320,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     $('bbView').innerHTML = h;
 
     // table
-    var rows = '', names = { base: 'Base servo', mainL: 'Main arm servo, left', mainR: 'Main arm servo, right', elbow: 'Second arm servo', psu: 'External 5 V supply', uno: 'Uno', gnd: 'Ground link', us: 'Ultrasonic HC-SR04', snd: 'Sound sensor', tcs: 'Colour sensor TCS34725', ledR: 'Red LED', ledG: 'Green LED', ledB: 'Blue LED' };
+    var rows = '', names = { base: 'Base servo', mainL: 'Main arm servo, left', mainR: 'Main arm servo, right', elbow: 'Second arm servo', psu: 'External 5 V supply', uno: 'Uno', gnd: 'Ground link', us: 'Ultrasonic HC-SR04', snd: 'Sound sensor', tcs: 'Colour sensor TCS34725', ledA: 'RGB LED', ledR: 'RGB LED', ledG: 'RGB LED', ledB: 'RGB LED' };
     wires.forEach(function (w) {
       rows += '<tr data-row="' + w.part + '" tabindex="0"><td>' + names[w.part] + '</td><td class="m">' + w.pin + '</td><td class="m">' + w.dest + '</td><td><span class="sw" style="background:var(' + w.col + ')"></span></td></tr>';
     });

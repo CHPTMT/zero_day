@@ -15,10 +15,13 @@
 | Sound sensor | VCC / GND | 5 V / GND |
 | Colour sensor TCS34725 | SDA / SCL | A4 / A5 |
 | Colour sensor | VCC / GND | 5 V / GND |
-| Red LED, 220 ohm (not wired yet) | anode | D8 |
-| Green LED, 220 ohm (not wired yet) | anode | D9 |
-| Blue LED, 220 ohm (not wired yet) | anode | D10 |
+| RGB LED, common anode | long leg (anode) | 5 V |
+| RGB LED | red leg, through 220 ohm | D8 |
+| RGB LED | green leg, through 220 ohm | D9 |
+| RGB LED | blue leg, through 220 ohm | D10 |
 | Status | onboard LED | D13 |
+
+The RGB LED is common anode, so a pin set LOW lights that colour. At Point C the LED follows what the colour sensor sees for 2 s, then holds the final colour to the end of the run. If the LED shows the opposite of the paper (everything except the right colour), it is common cathode: set `LED_COMMON_ANODE` to false and move the long leg to GND. If red and blue are swapped, swap the D8 and D10 wires.
 
 The two main arm servos face each other, so the code always drives them in opposite directions: left = zero + angle, right = zero - angle.
 

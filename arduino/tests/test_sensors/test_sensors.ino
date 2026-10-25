@@ -5,7 +5,7 @@
  *   distance (cm) and present / empty | colour raw, normalised, class,
  *   colour temperature (K) and primary colour (strongest channel) |
  *   sound peak to peak amplitude and indicator level
- * The external LED for the detected colour lights if the LEDs are wired.
+ * The RGB LED shows the colour the sensor sees, live.
  *
  * Calibration from the Serial Monitor (115200, Newline):
  *   r / g / b   hold that colour paper under the sensor, then type the letter.
@@ -14,7 +14,7 @@
  *               Do a soft and a hard tap, set SOUND_AMP_MIN and SOUND_AMP_MAX.
  *
  * Pins: ultrasonic echo D6, trig D7, sound AO A1, colour SDA A4 / SCL A5,
- *       LEDs red D8, green D9, blue D10.
+ *       RGB LED (common anode, long leg to 5 V) red D8, green D9, blue D10.
  * Library: Adafruit TCS34725
  */
 
@@ -23,6 +23,7 @@
 
 const uint8_t PIN_US_ECHO = 6, PIN_US_TRIG = 7, PIN_SOUND = A1;
 const uint8_t PIN_LED_RED = 8, PIN_LED_GREEN = 9, PIN_LED_BLUE = 10;
+const bool LED_COMMON_ANODE = true;   // a LOW pin lights that colour; false for common cathode
 
 // Same values as arm_controller.ino
 const float US_DETECT_MIN_CM = 2.0, US_DETECT_MAX_CM = 20.0;
@@ -83,9 +84,9 @@ char classify(const float n[3]) {
 }
 
 void showLed(char c) {
-  digitalWrite(PIN_LED_RED, c == 'R');
-  digitalWrite(PIN_LED_GREEN, c == 'G');
-  digitalWrite(PIN_LED_BLUE, c == 'B');
+  digitalWrite(PIN_LED_RED, (c == 'R') != LED_COMMON_ANODE);
+  digitalWrite(PIN_LED_GREEN, (c == 'G') != LED_COMMON_ANODE);
+  digitalWrite(PIN_LED_BLUE, (c == 'B') != LED_COMMON_ANODE);
 }
 
 // Peak to peak level over a short window (live meter).
@@ -154,6 +155,7 @@ void setup() {
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_LED_BLUE, OUTPUT);
+  showLed('-');
   tcsOk = tcs.begin();
   Serial.println(F("\nSENSOR TEST: reading all sensors twice a second. The arm does not move."));
   Serial.println(tcsOk ? F("Colour sensor: connected.") : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires and power."));

@@ -5,7 +5,7 @@
  * Sequence (state machine, fully autonomous after reset):
  *   ZERO    all joints at relative 0 for 5 s (also the window to type the word)
  *   TASK 1  Points A and B: ultrasonic presence, YES / NO / BOX gesture
- *   TASK 2  Point C: colour sensor, light the matching LED
+ *   TASK 2  Point C: colour sensor, the RGB LED shows the colour it sees
  *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
  *   TASK 4  Point E: press the button in Morse for the 3 letter word
  *   FINISH  back to zero, print a summary
@@ -70,11 +70,12 @@ const uint8_t PIN_US_ECHO    = 6;
 const uint8_t PIN_US_TRIG    = 7;
 const uint8_t PIN_SOUND      = A1;   // sound sensor AO
 // Colour sensor on I2C: SDA = A4, SCL = A5
-// External colour LEDs (each through 220 ohm to GND). Not wired yet:
-// connect them to these pins, or change the numbers.
+// RGB LED, common anode: long leg to 5 V, the red, green and blue legs each
+// through 220 ohm to these pins. A pin set LOW lights that colour.
 const uint8_t PIN_LED_RED    = 8;
 const uint8_t PIN_LED_GREEN  = 9;
 const uint8_t PIN_LED_BLUE   = 10;
+const bool LED_COMMON_ANODE  = true;   // false for a common cathode LED (long leg to GND)
 const uint8_t PIN_STATUS     = 13;   // onboard LED
 
 // ======================================================================
@@ -199,6 +200,7 @@ const float REF_GREEN[3] = {0.28, 0.44, 0.28};
 const float REF_BLUE[3]  = {0.20, 0.32, 0.48};
 const uint16_t COLOUR_MIN_CLEAR = 30;
 const uint8_t  COLOUR_SAMPLES   = 3;
+const uint16_t COLOUR_LIVE_MS   = 2000;   // LED follows the sensor live at C for this long
 
 const uint16_t SOUND_TRIGGER   = 40;
 const uint16_t SOUND_AMP_MIN   = 40;
@@ -513,10 +515,12 @@ bool objectPresent(float d) { return d >= US_DETECT_MIN_CM && d <= US_DETECT_MAX
 // ======================================================================
 // COLOUR
 // ======================================================================
+// Lights one colour of the RGB LED, or none for any other letter.
+// With a common anode LED a LOW pin is on, so each level is flipped.
 void setColourLed(char c) {
-  digitalWrite(PIN_LED_RED,   c == 'R');
-  digitalWrite(PIN_LED_GREEN, c == 'G');
-  digitalWrite(PIN_LED_BLUE,  c == 'B');
+  digitalWrite(PIN_LED_RED,   (c == 'R') != LED_COMMON_ANODE);
+  digitalWrite(PIN_LED_GREEN, (c == 'G') != LED_COMMON_ANODE);
+  digitalWrite(PIN_LED_BLUE,  (c == 'B') != LED_COMMON_ANODE);
 }
 
 float dist2(const float a[3], const float b[3]) {
@@ -543,9 +547,31 @@ void printColourExtras(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   Serial.println('.');
 }
 
-// Always returns R, G or B, so an LED is always lit.
+// Nearest calibrated colour. A reading too dark to trust uses the strongest channel.
+char classifyColour(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
+  float sum = r + g + b;
+  if (c < COLOUR_MIN_CLEAR || sum == 0) return primaryColour(r, g, b);
+  float n[3] = {r / sum, g / sum, b / sum};
+  float dr = dist2(n, REF_RED), dg = dist2(n, REF_GREEN), db = dist2(n, REF_BLUE);
+  if (dr <= dg && dr <= db) return 'R';
+  return dg <= db ? 'G' : 'B';
+}
+
+// The LED follows whatever the sensor sees, a fresh reading every 50 ms.
+void showColourLive(uint16_t ms) {
+  if (!tcsOk) return;
+  Serial.println(F("The RGB LED now follows what the colour sensor sees for 2 seconds."));
+  unsigned long end = millis() + ms;
+  while ((long)(end - millis()) > 0) {
+    uint16_t r, g, b, c;
+    tcs.getRawData(&r, &g, &b, &c);
+    setColourLed(classifyColour(r, g, b, c));
+  }
+}
+
+// Always returns R, G or B, so the LED always shows a colour.
 char readColour() {
-  if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so the red LED is used by default.")); return 'R'; }
+  if (!tcsOk) { Serial.println(F("The colour sensor is not connected, so the LED shows red by default.")); return 'R'; }
   uint32_t r = 0, g = 0, b = 0, c = 0;
   for (uint8_t i = 0; i < COLOUR_SAMPLES; i++) {
     uint16_t rr, gg, bb, cc;
@@ -561,15 +587,12 @@ char readColour() {
   printColourExtras(r, g, b, c);
   if (c < COLOUR_MIN_CLEAR || sum == 0) {
     Serial.println(F("The reading is too dark to trust, so the strongest channel decides the colour."));
-    return primaryColour(r, g, b);
+  } else {
+    Serial.print(F("Share of each colour: red ")); Serial.print((int)(r * 100 / sum));
+    Serial.print(F("%, green ")); Serial.print((int)(g * 100 / sum));
+    Serial.print(F("%, blue ")); Serial.print((int)(b * 100 / sum)); Serial.println(F("%."));
   }
-  float n[3] = {r / sum, g / sum, b / sum};
-  Serial.print(F("Share of each colour: red ")); Serial.print((int)(n[0] * 100));
-  Serial.print(F("%, green ")); Serial.print((int)(n[1] * 100));
-  Serial.print(F("%, blue ")); Serial.print((int)(n[2] * 100)); Serial.println(F("%."));
-  float dr = dist2(n, REF_RED), dg = dist2(n, REF_GREEN), db = dist2(n, REF_BLUE);
-  if (dr <= dg && dr <= db) return 'R';
-  return dg <= db ? 'G' : 'B';
+  return classifyColour(r, g, b, c);
 }
 
 const __FlashStringHelper *colourName(char c) {
@@ -732,9 +755,10 @@ void task1() {
 void task2() {
   Serial.println(F("\nTASK 2 of 4: reading the colour of the paper at Point C."));
   goToStation(ST_C);
+  showColourLive(COLOUR_LIVE_MS);
   resultColour = readColour();
   Serial.print(F("Point C: the paper is ")); Serial.print(colourName(resultColour));
-  Serial.print(F(". Switching on the ")); Serial.print(colourName(resultColour)); Serial.println(F(" LED."));
+  Serial.print(F(". The RGB LED now shows ")); Serial.print(colourName(resultColour)); Serial.println('.');
   setColourLed(resultColour);   // stays lit to the end of the run
 }
 
