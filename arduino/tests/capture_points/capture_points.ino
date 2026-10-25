@@ -77,21 +77,14 @@ Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0
 Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
 Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};
-// The button's own axis on the E stand. Read E_STAND_ANGLE_DEG off the base map
-// ticks where the stand's base touches E's circle (0 = top, clockwise; it is 45
-// in the photo). BUTTON_TILT_DEG is the breadboard's slope from flat (0 = button
-// facing straight up, 90 = upright facing the circle centre). Measure it with a
-// phone level on the breadboard.
-const float E_STAND_ANGLE_DEG = 45;
-const float BUTTON_TILT_DEG   = 45;
-const float PRESS_TRAVEL_MM   = 44;   // the pusher tip waits this far off the button, on its axis
-const float PRESS_DEPTH_MM    = 8;    // and pushes this far past contact
+const float PRESS_TRAVEL_MM   = 36;   // the pusher tip waits this far above the button (more puts the second arm past +45)
+const float PRESS_DEPTH_MM    = 8;    // and pushes this far down past contact
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
-const float PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.77;
+const float PRESS_SPEED_DEG_S = 60, PRESS_CLOSE_AT = 0.75;
 const float LIFT_TURN_DEG = 25;
 const float GESTURE_UP_MM = 70;          // same as arm_controller.ino
 const float GESTURE_DEG = 15;
@@ -188,19 +181,11 @@ void toolPoint(const Pose &p, const Tool &t, float &theta, float &r, float &z) {
   theta = 90 - p.a[J_BASE] - degrees(atan2(t.side, rin));
 }
 
-// Point E. The breadboard sits on the E stand's sloping top, so the button
-// faces up and leans BUTTON_TILT_DEG towards the centre of E's circle. This
-// gives the point d mm out from the button along its own axis (negative =
-// pushed into it), for the pusher tip to go to.
+// Point E: the point d mm straight above the button top (negative = pushed
+// down into it), for the pusher tip to go to. Presses run straight down.
 Station buttonPoint(float d) {
-  float t = radians(BUTTON_TILT_DEG), f = radians(E_STAND_ANGLE_DEG + 180);   // map angle the button faces
-  float nx = -sin(t) * sin(f), ny = sin(t) * cos(f), nz = cos(t);   // x = the arm's left, y = forward
-  float x = ST_E.r * cos(radians(ST_E.theta)) + d * nx;
-  float y = ST_E.r * sin(radians(ST_E.theta)) + d * ny;
   Station s = ST_E;
-  s.theta = degrees(atan2(y, x));
-  s.r = sqrt(x * x + y * y);
-  s.z += d * nz;
+  s.z += d;
   s.standoff = 0;
   return s;
 }
@@ -403,8 +388,8 @@ void printSound() {
 
 float *trimOf(const Stop &st) { return st.kind == K_IND ? indTrim : st.s->trim; }
 
-// Pose for a stop with its current trim. At E the arm waits off the button on
-// its axis, as in arm_controller, and press is the pose 8 mm into it.
+// Pose for a stop with its current trim. At E the arm waits above the button,
+// as in arm_controller, and press is the pose 8 mm into it.
 bool stopPose(const Stop &st, Pose &press, Pose &shown) {
   if (st.kind == K_PRESS)
     return stationPose(buttonPoint(-PRESS_DEPTH_MM), press) && stationPose(buttonPoint(PRESS_TRAVEL_MM), shown);

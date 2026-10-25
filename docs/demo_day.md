@@ -27,7 +27,7 @@ Joint angles from the rest position, and where the sensor in use ends up (height
 | C | 22 left | 33 forward | 41 down | Clear dip: second arm points about 75 degrees down, colour sensor tip just in front of the blue face, looking steeply down at it (see Point C below) |
 | D | 1 right | 13 forward | 11 down | Second arm tilted down, sound sensor 4 cm from the tap point |
 | Indicator | 20 right | 35 forward (quiet) to 14 forward (loud) | 13 down to 15 up | Ultrasonic 6 cm from the scale, pointing at 150 mm (quiet) up to 350 mm (loud) |
-| E | 85 right off the button, 79 right pressing | 11 forward off, 20 forward pressing | 34 up | Arm swung right; each press pushes the pusher tip 52 mm along the button's own axis, from 44 mm off it to 8 mm in |
+| E | 80 right | 17 forward above, 19 forward pressing | 44 up above, 32 up pressing | Arm swung right; each press pushes the pusher tip 44 mm straight down, from 36 mm above the button to 8 mm in |
 
 Gestures, one per run, each a different shape. YES (object at A): the sensor moves straight up and down about 40 mm, twice. NO (object at B): the base turns 15 degrees left and right, twice. BOX (nothing at A or B): the sensor traces a square, up, across, down and back. Each swing takes 900 ms with a short stop at each end, and the Serial Monitor prints a `Gesture:` line.
 
@@ -45,7 +45,7 @@ How to set them on the day: run `test_combined` with nothing at A and B and note
 
 The arm stays still for 2 s at every point before it does anything there. Between A and B it lifts up, turns 25 degrees towards the front, then turns back and leans down to B, so the two visits are clearly separate. The arm cannot bring the sensor down level with B (150 mm) with these arm lengths, so at B it looks down at the point from 7 cm away.
 
-Each Morse press at E pushes the 70 mm pusher in a straight line along the button's own axis, from 44 mm off the button to 8 mm into it. The breadboard sits on the E stand's sloping top, so a straight-down press would slide off the cap. Set two values in `arm_controller.ino`, `test_combined.ino` and `capture_points.ino`: `E_STAND_ANGLE_DEG`, the base map tick where the E stand's base touches E's circle (45 in the photo), and `BUTTON_TILT_DEG`, the breadboard's slope from flat (0 = button facing straight up, 90 = upright), measured with a phone level. Both are set to 45 until measured. Presses move at 60 degrees per second, faster than the rest of the run, so dots and dashes stay apart. The timing decodes correctly as long as the button closes within the first 7 mm of the 8 mm push.
+Each Morse press at E pushes the 70 mm pusher straight down, from 36 mm above the button to 8 mm into it, and straight back up; the main arm and second arm move together so the tip stays vertical (it drifts about 1 mm). The pusher waits 36 mm above because any higher would need the second arm past +45. Presses move at 60 degrees per second, faster than the rest of the run, so dots and dashes stay apart. The timing decodes correctly as long as the button closes within the first 7 mm of the 8 mm push.
 
 ## Point C
 

@@ -28,7 +28,7 @@ Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm ab
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
 | Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
 
-The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A, 70 mm from B and 60 mm from the volume indicator, colour sensor 15 mm from the blue face at C, sound sensor 40 mm from D. At E the breadboard sits on the stand's sloping top, so each press moves the pusher tip in a straight line along the button's own axis, from 44 mm off it to 8 mm in (`E_STAND_ANGLE_DEG`, `BUTTON_TILT_DEG`).
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A, 70 mm from B and 60 mm from the volume indicator, colour sensor 15 mm from the blue face at C, sound sensor 40 mm from D. At E each press pushes the 70 mm pusher straight down, from 36 mm above the button to 8 mm into it.
 
 ## Stations (theta deg, R mm, Z mm)
 
