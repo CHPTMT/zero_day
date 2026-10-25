@@ -30,7 +30,7 @@ const uint8_t PIN_BUZZER = 11;
 const bool BUZZER_PASSIVE = true;     // same as arm_controller.ino; false for an active buzzer
 
 // Same values as arm_controller.ino
-const float US_DETECT_MIN_CM = 3.0, US_DETECT_MAX_CM = 17.0;   // the A and B window in arm_controller.ino
+const float US_DETECT_MIN_CM = 3.0, US_DETECT_MAX_CM = 15.0;   // the A and B window in arm_controller.ino
 float REF_RED[3]   = {0.58, 0.23, 0.19};
 float REF_GREEN[3] = {0.28, 0.44, 0.28};
 float REF_BLUE[3]  = {0.20, 0.32, 0.48};
