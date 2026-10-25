@@ -50,7 +50,7 @@ struct Tool {
 const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
 const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false};  // 83 mm out (the tip), 45 mm to your right
-const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 50 mm bar below the array, at the arm end
+const Tool TOOL_PUSHER = {"pusher",      0, 70,   0, true};   // 50 mm bar under the arm end: tip 20 + 50 = 70 mm below the arm's centre line
 // Pusher note: if a pose ever needs the second arm past +45 at Point E, the
 // arm holds +45 and sets the pusher height instead (see pressAtLimit).
 

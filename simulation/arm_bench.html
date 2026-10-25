@@ -127,6 +127,8 @@ th { font-family: var(--mono); font-size: 0.68rem; font-weight: 500; letter-spac
 td.m { font-family: var(--mono); white-space: nowrap; }
 .sw { display: inline-block; width: 22px; height: 6px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
 .wiring { display: grid; gap: 16px; }
+.partsgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 16px; }
+.dim { stroke: var(--muted); stroke-width: 1; fill: none; }
 .pick { width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 0.85rem; }
 .desc { font-size: 0.9rem; color: var(--muted); max-width: 60ch; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -148,6 +150,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-motion" aria-selected="true" aria-controls="motion" type="button">Motion</button>
+    <button class="tab" role="tab" id="tab-parts" aria-selected="false" aria-controls="parts" type="button">Parts</button>
     <button class="tab" role="tab" id="tab-wiring" aria-selected="false" aria-controls="wiring" type="button">Breadboard wiring</button>
   </div>
 
@@ -158,6 +161,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
         <h2>Side view</h2>
         <svg id="sideView" viewBox="0 0 640 470" role="img" aria-label="Side view of the arm in the plane it is facing"></svg>
         <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The grey strip past the arm end is the sensor array along the arm's axis: ultrasonic at the arm end, sound sensor 42 mm out (blue), colour sensor 83 mm out at the tip (red). Their 45 mm sideways offsets do not show here. The red bar is the 50 mm button pusher, hanging below the array at the arm end and pointing straight down when the second arm is level. The dashed line is the standoff from whichever sensor is aimed at the current target.</p>
+      </div>
+      <div class="panel">
+        <h2>Top view of the arm</h2>
+        <svg id="topView" viewBox="0 0 640 450" role="img" aria-label="The arm seen from above, pointing towards you"></svg>
+        <p class="cap">Looking down on the arm with it pointing towards you, as if you stand in front of the machine. Your left and right match the labels. To scale for the current pose. The sideways thickness of each arm, seen from above, is estimated from the photos (main arm 30 mm, second arm 20 mm); the 50 mm and 40 mm side faces are in the side view.</p>
       </div>
       <div class="panel">
         <h2>Plan view</h2>
@@ -175,7 +183,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
               <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">100 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
               <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
               <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
-              <tr><td>Button pusher</td><td class="m">arm end, 50 down</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length. If E ever needs the 2nd arm past +45, the arm holds +45 and sets the pusher height instead.</td></tr>
+              <tr><td>Button pusher</td><td class="m">50 mm bar under the arm end, tip 70 below its centre line</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length. If E ever needs the 2nd arm past +45, the arm holds +45 and sets the pusher height instead.</td></tr>
             </tbody>
           </table>
         </div>
@@ -280,6 +288,16 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     </div>
   </section>
 
+  <!-- ================= PARTS ================= -->
+  <section id="parts" class="partsgrid" role="tabpanel" aria-labelledby="tab-parts" hidden>
+    <div class="panel"><h2>1. Platform and base</h2><svg id="pBase" viewBox="0 0 420 300" role="img" aria-label="Platform and base turret with heights"></svg><p class="cap">Side view. The base servo (D2) turns the turret. Everything above it turns with it.</p></div>
+    <div class="panel"><h2>2. Main arm</h2><svg id="pMain" viewBox="0 0 420 300" role="img" aria-label="Main arm side face with dimensions"></svg><p class="cap">Side face 50 mm wide, 225 mm pivot to pivot. Driven at the bottom by two servos facing each other, left D3 and right D4, which always turn in opposite directions. 0 = upright, +50 forward, -15 back.</p></div>
+    <div class="panel"><h2>3. Second arm</h2><svg id="pSecond" viewBox="0 0 420 300" role="img" aria-label="Second arm side face with dimensions"></svg><p class="cap">Open frame, side face 40 mm wide, 160 mm from its pivot to the end. Servo D5 at the pivot. 0 = level, +45 up, -90 down.</p></div>
+    <div class="panel"><h2>4. Sensor array (from above)</h2><svg id="pArray" viewBox="0 0 420 300" role="img" aria-label="Sensor array seen from above with offsets"></svg><p class="cap">Runs along the axis of the second arm from its end. Ultrasonic on the crossbar at the centre, sound sensor on your left leg, colour sensor at the tip of your right leg (you standing in front of the machine).</p></div>
+    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">50 mm bar fixed under the sensor array at the end of the second arm, square to the arm, so it points straight down when the second arm is level. Presses along its own length.</p></div>
+    <div class="panel"><h2>6. Assembled at zero</h2><svg id="pAll" viewBox="0 0 420 300" role="img" aria-label="Whole arm at the zero pose with key heights"></svg><p class="cap">Base forward, main arm upright, second arm level. Heights from the table.</p></div>
+  </section>
+
   <!-- ================= WIRING ================= -->
   <section id="wiring" class="wiring" role="tabpanel" aria-labelledby="tab-wiring" hidden>
     <div class="panel">
@@ -306,13 +324,15 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 (function () {
   /* ============ geometry and limits, copied from arm_controller.ino ============ */
   var SH = 130, L1 = 225, L2 = 160;   // pivot 130 mm above the table: 20 mm platform + 110 mm
+  var MAIN_W = 50, SEC_W = 40;        // side-face widths of the main and second arm
+  var MAIN_T = 30, SEC_T = 20;        // thickness seen from above (estimated from photos)
   // Sensor array along the axis of the second arm, measured from its end. along = further out,
   // down = square to the arm (towards the ground when level), side + = your right facing the machine.
   var TOOLS = {
     US:   { name: 'ultrasonic', along: 0,  down: 0,  side: 0,   press: false },
     SND:  { name: 'sound',      along: 42, down: 0,  side: -45, press: false },
     RGB:  { name: 'colour',     along: 83, down: 0,  side: 45,  press: false },
-    PUSH: { name: 'pusher',     along: 0,  down: 50, side: 0,   press: true }
+    PUSH: { name: 'pusher',     along: 0,  down: 70, side: 0,   press: true }   // 50 mm bar under the 40 mm arm: tip 70 below its centre line
   };
   var MIN = [-90, -15, -90], MAX = [90, 50, 45];
   var ZERO = [0, 0, 0];
@@ -455,8 +475,10 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       if (on) h += '<line x1="' + sx(tp.rin) + '" y1="' + sy(tp.z) + '" x2="' + sx(target.r) + '" y2="' + sy(target.z) + '" stroke="var(--accent)" stroke-dasharray="3 4"/>';
     }
     // links
-    h += '<line x1="' + sx(0) + '" y1="' + sy(SH) + '" x2="' + sx(k.ex) + '" y2="' + sy(k.ez) + '" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"/>';
-    h += '<line x1="' + sx(k.ex) + '" y1="' + sy(k.ez) + '" x2="' + sx(k.wx) + '" y2="' + sy(k.wz) + '" stroke="var(--link2)" stroke-width="11" stroke-linecap="round"/>';
+    // links at their true side-face widths: main arm 50 mm, second arm 40 mm with its cut-outs
+    h += band(sx, sy, 0, SH, k.ex, k.ez, MAIN_W, 0, 1, 'var(--accent)', 0.85);
+    h += band(sx, sy, k.ex, k.ez, k.wx, k.wz, SEC_W, 0, 1, 'var(--link2)', 0.9);
+    [0.3, 0.52, 0.74].forEach(function (t) { h += band(sx, sy, k.ex, k.ez, k.wx, k.wz, SEC_W - 16, t - 0.07, t + 0.07, 'var(--surface)', 1); });
     // sensor array: runs on out along the arm axis to the colour sensor at the tip
     h += '<line x1="' + sx(k.wx) + '" y1="' + sy(k.wz) + '" x2="' + sx(k.rgb.rin) + '" y2="' + sy(k.rgb.z) + '" stroke="var(--muted)" stroke-width="6" stroke-linecap="round"/>';
     h += '<circle cx="' + sx(k.snd.rin) + '" cy="' + sy(k.snd.z) + '" r="6" fill="var(--led-b)" stroke="var(--surface)" stroke-width="1.5"/>';
@@ -464,7 +486,8 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     h += '<text class="t-txt" x="' + sx(k.snd.rin) + '" y="' + (sy(k.snd.z) - 10) + '" text-anchor="middle">sound</text>';
     h += '<text class="t-txt" x="' + (sx(k.rgb.rin) + 9) + '" y="' + (sy(k.rgb.z) - 8) + '">RGB</text>';
     // button pusher bar
-    h += '<line x1="' + sx(k.mx) + '" y1="' + sy(k.mz) + '" x2="' + sx(k.px) + '" y2="' + sy(k.pz) + '" stroke="var(--warn)" stroke-width="5" stroke-linecap="round"/>';
+    var bx = k.mx + Math.sin(k.psi) * SEC_W / 2, bz = k.mz - Math.cos(k.psi) * SEC_W / 2;   // bar starts at the arm's underside
+    h += '<line x1="' + sx(bx) + '" y1="' + sy(bz) + '" x2="' + sx(k.px) + '" y2="' + sy(k.pz) + '" stroke="var(--warn)" stroke-width="5" stroke-linecap="round"/>';
     h += '<circle cx="' + sx(k.px) + '" cy="' + sy(k.pz) + '" r="4" fill="' + (btnOn ? 'var(--accent)' : 'var(--warn)') + '"/>';
     [[0, SH], [k.ex, k.ez], [k.wx, k.wz]].forEach(function (p) {
       h += '<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
@@ -513,8 +536,165 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   }
 
   function raw(v) { return clamp(Math.round(v), 0, 180); }
+  // A link drawn as a band of width w (mm) from point 1 to point 2, between fractions t0 and t1
+  function band(X, Y, x1, z1, x2, z2, w, t0, t1, fill, op) {
+    var dx = x2 - x1, dz = z2 - z1, L = Math.hypot(dx, dz) || 1, nx = -dz / L * w / 2, nz = dx / L * w / 2;
+    var ax = x1 + dx * t0, az = z1 + dz * t0, bx = x1 + dx * t1, bz = z1 + dz * t1;
+    var pts = [[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]];
+    return '<polygon points="' + pts.map(function (q) { return X(q[0]) + ',' + Y(q[1]); }).join(' ') + '" fill="' + fill + '" opacity="' + op + '"/>';
+  }
+  function dimLine(x1, y1, x2, y2, text, off) {   // screen coordinates
+    var mx = (x1 + x2) / 2, my = (y1 + y2) / 2, h = '';
+    h += '<line class="dim" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>';
+    var ang = Math.atan2(y2 - y1, x2 - x1), tick = 5;
+    [[x1, y1], [x2, y2]].forEach(function (q) {
+      h += '<line class="dim" x1="' + (q[0] - Math.sin(ang) * tick) + '" y1="' + (q[1] + Math.cos(ang) * tick) + '" x2="' + (q[0] + Math.sin(ang) * tick) + '" y2="' + (q[1] - Math.cos(ang) * tick) + '"/>';
+    });
+    h += '<text class="t-ink" x="' + (mx + (off ? off[0] : 0)) + '" y="' + (my + (off ? off[1] : -6)) + '" text-anchor="middle">' + text + '</text>';
+    return h;
+  }
+
+  // Top view of the arm, pointing towards you. Screen x = sideways (your right = +), screen y = outward.
+  function drawTop() {
+    var k = fk(cur), sc = 0.9, cx = 320, cy = 60, h = '';
+    var X = function (side) { return cx + side * sc; }, Y = function (rad) { return cy + rad * sc; };
+    var cp = Math.cos(k.psi), spsi = Math.sin(k.psi);
+    // grid every 100 mm outward
+    for (var r = 0; r <= 400; r += 100) {
+      h += '<line class="t-grid" x1="' + X(-200) + '" y1="' + Y(r) + '" x2="' + X(200) + '" y2="' + Y(r) + '"/>';
+      h += '<text class="t-txt" x="' + (X(-200) - 4) + '" y="' + (Y(r) + 4) + '" text-anchor="end">' + r + '</text>';
+    }
+    h += '<text class="t-txt" x="' + (X(-200) - 4) + '" y="' + (Y(0) - 14) + '" text-anchor="end">mm out</text>';
+    // base turret
+    h += '<circle cx="' + X(0) + '" cy="' + Y(0) + '" r="' + 55 * sc + '" fill="var(--tint)" stroke="var(--muted)"/>';
+    // main arm and second arm seen from above
+    var rect = function (r0, r1, w, fill, op) {
+      var a = Math.min(r0, r1), b = Math.max(r0, r1);
+      return '<rect x="' + X(-w / 2) + '" y="' + Y(a) + '" width="' + (w * sc) + '" height="' + Math.max(2, (b - a) * sc) + '" fill="' + fill + '" opacity="' + op + '"/>';
+    };
+    h += rect(0, k.ex, MAIN_T, 'var(--accent)', 0.85);
+    h += rect(k.ex, k.wx, SEC_T, 'var(--link2)', 0.9);
+    // sensor array: crossbar at the arm end, legs out along the arm axis
+    var leg = function (side, len) { return '<line x1="' + X(side) + '" y1="' + Y(k.wx) + '" x2="' + X(side) + '" y2="' + Y(k.wx + len * cp) + '" stroke="var(--muted)" stroke-width="6" stroke-linecap="round"/>'; };
+    h += '<line x1="' + X(-55) + '" y1="' + Y(k.wx) + '" x2="' + X(55) + '" y2="' + Y(k.wx) + '" stroke="var(--muted)" stroke-width="7" stroke-linecap="round"/>';
+    h += leg(-45, 60) + leg(45, 90);
+    // ultrasonic on the crossbar
+    h += '<rect x="' + X(-22) + '" y="' + (Y(k.wx) - 2) + '" width="' + 44 * sc + '" height="' + 10 + '" fill="#2a6fb0"/>';
+    h += '<circle cx="' + X(-12) + '" cy="' + (Y(k.wx) + 9) + '" r="7" fill="#cfd6db" stroke="#6b7680"/><circle cx="' + X(12) + '" cy="' + (Y(k.wx) + 9) + '" r="7" fill="#cfd6db" stroke="#6b7680"/>';
+    // pusher, hanging below the arm end
+    var pr = k.wx + 70 * spsi;
+    h += '<rect x="' + (X(0) - 4) + '" y="' + (Math.min(Y(k.wx), Y(pr)) - 1) + '" width="8" height="' + Math.max(3, Math.abs(Y(pr) - Y(k.wx)) + 2) + '" fill="var(--warn)" opacity="0.8"/>';
+    h += '<circle cx="' + X(0) + '" cy="' + Y(pr) + '" r="4" fill="var(--warn)"/>';
+    // sound and colour sensors
+    var ys = Y(k.wx + 42 * cp), yr = Y(k.wx + 83 * cp);
+    h += '<circle cx="' + X(-45) + '" cy="' + ys + '" r="7" fill="var(--led-b)" stroke="var(--surface)" stroke-width="1.5"/>';
+    h += '<circle cx="' + X(45) + '" cy="' + yr + '" r="7" fill="var(--led-r)" stroke="var(--surface)" stroke-width="1.5"/>';
+    h += '<text class="t-ink" x="' + (X(-45) - 12) + '" y="' + (ys + 4) + '" text-anchor="end">sound</text>';
+    h += '<text class="t-ink" x="' + (X(45) + 12) + '" y="' + (yr + 4) + '">colour</text>';
+    h += '<text class="t-ink" x="' + (X(30) + 4) + '" y="' + (Y(k.wx) - 8) + '">ultrasonic</text>';
+    h += '<text class="t-txt" x="' + (X(0) - 12) + '" y="' + (Y(pr) + 4) + '" text-anchor="end">pusher (underneath)</text>';
+    // offsets
+    var dy = Y(k.wx + 90 * cp) + 18;
+    h += dimLine(X(-45), dy, X(0), dy, '45', [0, 14]);
+    h += dimLine(X(0), dy, X(45), dy, '45', [0, 14]);
+    // pivots
+    [[0, 0], [0, k.ex], [0, k.wx]].forEach(function (q) { h += '<circle cx="' + X(q[0]) + '" cy="' + Y(q[1]) + '" r="5" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>'; });
+    // viewer
+    h += '<text class="t-acc" x="' + X(0) + '" y="440" text-anchor="middle">you stand here, facing the machine</text>';
+    h += '<text class="t-ink" x="20" y="440">your left</text>';
+    h += '<text class="t-ink" x="620" y="440" text-anchor="end">your right</text>';
+    $('topView').innerHTML = h;
+  }
+
+  // Piece by piece drawings. Each uses its own scale and draws to scale within its panel.
+  function drawParts() {
+    var h, sc, X, Y;
+    // 1. platform and base
+    sc = 1.6; X = function (x) { return 210 + x * sc; }; Y = function (z) { return 270 - z * sc; };
+    h = '<line x1="10" y1="' + Y(0) + '" x2="410" y2="' + Y(0) + '" stroke="var(--muted)"/><text class="t-txt" x="14" y="' + (Y(0) + 14) + '">table</text>';
+    h += '<rect x="' + X(-100) + '" y="' + Y(20) + '" width="' + 200 * sc + '" height="' + 20 * sc + '" fill="var(--bb)" stroke="var(--muted)"/>';
+    h += '<text class="t-txt" x="' + X(-96) + '" y="' + (Y(10) + 4) + '">platform</text>';
+    h += '<rect x="' + X(-55) + '" y="' + Y(80) + '" width="' + 110 * sc + '" height="' + 60 * sc + '" rx="6" fill="var(--tint)" stroke="var(--muted)"/>';
+    h += '<text class="t-ink" x="' + X(0) + '" y="' + (Y(50) + 4) + '" text-anchor="middle">base servo D2</text>';
+    h += '<rect x="' + X(-35) + '" y="' + Y(140) + '" width="' + 70 * sc + '" height="' + 60 * sc + '" fill="var(--tint)" stroke="var(--muted)"/>';
+    h += '<circle cx="' + X(0) + '" cy="' + Y(130) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
+    h += '<text class="t-ink" x="' + X(40) + '" y="' + (Y(130) + 4) + '">main arm pivot</text>';
+    h += dimLine(X(110), Y(0), X(110), Y(20), '20', [18, 4]);
+    h += dimLine(X(110), Y(20), X(110), Y(130), '110', [22, 4]);
+    h += dimLine(X(-110), Y(0), X(-110), Y(130), '130', [-22, 4]);
+    $('pBase').innerHTML = h;
+
+    // 2. main arm, side face
+    sc = 1.0; X = function (x) { return 90 + x * sc; }; Y = function (z) { return 270 - z * sc; };
+    h = band(X, Y, 0, 0, 0, 225, MAIN_W, -0.05, 1.05, 'var(--accent)', 0.85);
+    h += '<circle cx="' + X(0) + '" cy="' + Y(0) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/><circle cx="' + X(0) + '" cy="' + Y(225) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
+    h += dimLine(X(50), Y(0), X(50), Y(225), '225', [26, 4]);
+    h += dimLine(X(-25), Y(-10), X(25), Y(-10), '50', [0, 13]);
+    h += '<text class="t-ink" x="' + X(120) + '" y="' + Y(20) + '">servo L (D3) on one side,</text><text class="t-ink" x="' + X(120) + '" y="' + (Y(20) + 16) + '">servo R (D4) on the other,</text><text class="t-ink" x="' + X(120) + '" y="' + (Y(20) + 32) + '">turning opposite ways</text>';
+    h += '<text class="t-ink" x="' + X(120) + '" y="' + Y(210) + '">to the second arm pivot</text>';
+    $('pMain').innerHTML = h;
+
+    // 3. second arm, side face (open frame)
+    sc = 1.6; X = function (x) { return 40 + x * sc; }; Y = function (z) { return 150 - z * sc; };
+    h = band(X, Y, 0, 0, 160, 0, SEC_W, -0.06, 1, 'var(--link2)', 0.9);
+    [0.3, 0.52, 0.74].forEach(function (t) { h += band(X, Y, 0, 0, 160, 0, SEC_W - 16, t - 0.07, t + 0.07, 'var(--surface)', 1); });
+    h += '<circle cx="' + X(0) + '" cy="' + Y(0) + '" r="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
+    h += '<text class="t-ink" x="' + X(0) + '" y="' + (Y(0) - 40) + '" text-anchor="middle">servo D5</text>';
+    h += dimLine(X(0), Y(-34), X(160), Y(-34), '160 to the end', [0, 16]);
+    h += dimLine(X(175), Y(20), X(175), Y(-20), '40', [16, 4]);
+    $('pSecond').innerHTML = h;
+
+    // 4. sensor array from above (you in front, arm pointing at you)
+    sc = 2.2; X = function (side) { return 210 + side * sc; }; Y = function (out) { return 40 + out * sc; };
+    h = band(X, Y, 0, -20, 0, 0, SEC_T, 0, 1, 'var(--link2)', 0.9);
+    h += '<text class="t-txt" x="' + (X(0) + 26) + '" y="' + (Y(-12)) + '">second arm end</text>';
+    h += '<line x1="' + X(-55) + '" y1="' + Y(0) + '" x2="' + X(55) + '" y2="' + Y(0) + '" stroke="var(--muted)" stroke-width="8" stroke-linecap="round"/>';
+    h += '<line x1="' + X(-45) + '" y1="' + Y(0) + '" x2="' + X(-45) + '" y2="' + Y(60) + '" stroke="var(--muted)" stroke-width="7" stroke-linecap="round"/>';
+    h += '<line x1="' + X(45) + '" y1="' + Y(0) + '" x2="' + X(45) + '" y2="' + Y(90) + '" stroke="var(--muted)" stroke-width="7" stroke-linecap="round"/>';
+    h += '<rect x="' + X(-22) + '" y="' + (Y(0) - 3) + '" width="' + 44 * sc + '" height="12" fill="#2a6fb0"/>';
+    h += '<circle cx="' + X(-12) + '" cy="' + (Y(0) + 14) + '" r="10" fill="#cfd6db" stroke="#6b7680"/><circle cx="' + X(12) + '" cy="' + (Y(0) + 14) + '" r="10" fill="#cfd6db" stroke="#6b7680"/>';
+    h += '<circle cx="' + X(-45) + '" cy="' + Y(42) + '" r="8" fill="var(--led-b)"/><circle cx="' + X(45) + '" cy="' + Y(83) + '" r="8" fill="var(--led-r)"/>';
+    h += '<text class="t-ink" x="' + (X(-45) - 14) + '" y="' + (Y(42) + 4) + '" text-anchor="end">sound</text>';
+    h += '<text class="t-ink" x="' + (X(45) + 14) + '" y="' + (Y(83) + 4) + '">colour</text>';
+    h += dimLine(X(-30), Y(0), X(-30), Y(42), '42', [-14, 4]);
+    h += dimLine(X(30), Y(0), X(30), Y(83), '83', [14, 4]);
+    h += dimLine(X(-45), Y(100), X(0), Y(100), '45', [0, 16]);
+    h += dimLine(X(0), Y(100), X(45), Y(100), '45', [0, 16]);
+    h += '<text class="t-txt" x="' + X(-88) + '" y="292">your left</text><text class="t-txt" x="' + X(88) + '" y="292" text-anchor="end">your right</text>';
+    $('pArray').innerHTML = h;
+
+    // 5. pusher, side view with the arm level
+    sc = 1.6; X = function (x) { return 40 + x * sc; }; Y = function (z) { return 90 - z * sc; };
+    h = band(X, Y, 0, 0, 160, 0, SEC_W, 0, 1, 'var(--link2)', 0.9);
+    h += '<line x1="' + X(160) + '" y1="' + Y(0) + '" x2="' + X(215) + '" y2="' + Y(0) + '" stroke="var(--muted)" stroke-width="6" stroke-linecap="round"/>';
+    h += '<text class="t-txt" x="' + X(190) + '" y="' + (Y(0) - 10) + '" text-anchor="middle">sensor array</text>';
+    h += '<line x1="' + X(160) + '" y1="' + Y(-20) + '" x2="' + X(160) + '" y2="' + Y(-70) + '" stroke="var(--warn)" stroke-width="7" stroke-linecap="round"/>';
+    h += dimLine(X(175), Y(-20), X(175), Y(-70), '50', [16, 4]);
+    h += dimLine(X(140), Y(0), X(140), Y(-70), '70 from centre line', [-72, -12]);
+    h += '<text class="t-ink" x="' + X(160) + '" y="' + (Y(-70) + 20) + '" text-anchor="middle">pusher tip</text>';
+    h += '<text class="t-txt" x="' + X(40) + '" y="' + (Y(-70) + 44) + '">square to the arm: straight down when level</text>';
+    $('pPusher').innerHTML = h;
+
+    // 6. assembled at zero
+    sc = 0.62; X = function (x) { return 140 + x * sc; }; Y = function (z) { return 285 - z * sc; };
+    var z0 = fk(ZERO);
+    h = '<line x1="10" y1="' + Y(0) + '" x2="410" y2="' + Y(0) + '" stroke="var(--muted)"/>';
+    h += '<rect x="' + X(-100) + '" y="' + Y(20) + '" width="' + 200 * sc + '" height="' + 20 * sc + '" fill="var(--bb)" stroke="var(--muted)"/>';
+    h += '<rect x="' + X(-35) + '" y="' + Y(130) + '" width="' + 70 * sc + '" height="' + 110 * sc + '" fill="var(--tint)" stroke="var(--muted)"/>';
+    h += band(X, Y, 0, SH, z0.ex, z0.ez, MAIN_W, 0, 1, 'var(--accent)', 0.85);
+    h += band(X, Y, z0.ex, z0.ez, z0.wx, z0.wz, SEC_W, 0, 1, 'var(--link2)', 0.9);
+    h += '<line x1="' + X(z0.wx) + '" y1="' + Y(z0.wz) + '" x2="' + X(z0.wx + 83) + '" y2="' + Y(z0.wz) + '" stroke="var(--muted)" stroke-width="4"/>';
+    h += '<line x1="' + X(z0.wx) + '" y1="' + Y(z0.wz - 20) + '" x2="' + X(z0.wx) + '" y2="' + Y(z0.wz - 70) + '" stroke="var(--warn)" stroke-width="5"/>';
+    h += dimLine(X(-140), Y(0), X(-140), Y(SH), '130', [-18, 4]);
+    h += dimLine(X(-140), Y(SH), X(-140), Y(z0.ez), '225', [-18, 4]);
+    h += dimLine(X(0), Y(z0.ez + 40), X(z0.wx), Y(z0.ez + 40), '160', [0, -6]);
+    h += '<text class="t-ink" x="' + (X(z0.wx) + 8) + '" y="' + (Y(z0.wz - 70) + 4) + '">pusher tip ' + f(z0.pz, 0) + ' mm up</text>';
+    h += '<text class="t-ink" x="' + (X(z0.wx + 83) + 6) + '" y="' + (Y(z0.wz) + 4) + '">' + f(z0.wz, 0) + ' mm up</text>';
+    $('pAll').innerHTML = h;
+  }
+
   function render() {
-    drawSide(); drawPlan();
+    drawSide(); drawPlan(); drawTop();
     var ids = ['jBase', 'jMain', 'jElbow'], vids = ['vBase', 'vMain', 'vElbow'];
     for (var j = 0; j < 3; j++) {
       if (document.activeElement !== $(ids[j])) $(ids[j]).value = Math.round(cur[j]);
@@ -858,13 +1038,15 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
   /* tabs */
   function show(tab) {
-    var m = tab === 'motion';
-    $('motion').hidden = !m; $('wiring').hidden = m;
-    $('tab-motion').setAttribute('aria-selected', m); $('tab-wiring').setAttribute('aria-selected', !m);
+    ['motion', 'parts', 'wiring'].forEach(function (t) {
+      $(t).hidden = t !== tab;
+      $('tab-' + t).setAttribute('aria-selected', t === tab);
+    });
   }
-  $('tab-motion').addEventListener('click', function () { show('motion'); });
-  $('tab-wiring').addEventListener('click', function () { show('wiring'); });
-  if (location.hash === '#wiring') show('wiring');
+  ['motion', 'parts', 'wiring'].forEach(function (t) {
+    $('tab-' + t).addEventListener('click', function () { show(t); });
+  });
+  if (location.hash === '#wiring' || location.hash === '#parts') show(location.hash.slice(1));
 
   /* theme */
   var root = document.documentElement;
@@ -1047,6 +1229,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
   /* first frame: arm at zero with a sample log */
   drawBB();
+  drawParts();
   render();
   log('Group 21 robotic arm, demonstration', 'h');
   posLine('zero');
