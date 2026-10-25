@@ -157,7 +157,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       <div class="panel">
         <h2>Side view</h2>
         <svg id="sideView" viewBox="0 0 640 470" role="img" aria-label="Side view of the arm in the plane it is facing"></svg>
-        <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The grey plate at the arm end is the sensor board: ultrasonic at its centre, sound sensor 42 mm down (blue), colour sensor 83 mm down (red). Their 45 mm sideways offsets do not show here. The red bar is the 50 mm button pusher, fixed 20 mm out and pointing straight down when the second arm is level. The dashed line is the standoff from whichever sensor is aimed at the current target.</p>
+        <p class="cap">Drawn in the vertical plane the base is facing. Millimetres from the base axis and from the base plate. The grey strip past the arm end is the sensor array along the arm's axis: ultrasonic at the arm end, sound sensor 42 mm out (blue), colour sensor 83 mm out at the tip (red). Their 45 mm sideways offsets do not show here. The red bar is the 50 mm button pusher, hanging below the array at the arm end and pointing straight down when the second arm is level. The dashed line is the standoff from whichever sensor is aimed at the current target.</p>
       </div>
       <div class="panel">
         <h2>Plan view</h2>
@@ -173,9 +173,9 @@ td.m { font-family: var(--mono); white-space: nowrap; }
             <thead><tr><th>Part</th><th>On the board</th><th>Aimed at</th><th>Gap</th><th>Works over</th></tr></thead>
             <tbody>
               <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">100 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
-              <tr><td>Colour TCS34725</td><td class="m">83 down, 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
-              <tr><td>Sound module</td><td class="m">42 down, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
-              <tr><td>Button pusher</td><td class="m">20 out, 50 down</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length.</td></tr>
+              <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
+              <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
+              <tr><td>Button pusher</td><td class="m">arm end, 50 down</td><td>E</td><td class="m">15 hover, 8 in</td><td>Presses along its own length. With the pivot at 60 mm, E needs the 2nd arm past +45, so the arm holds +45 and lands about 5 mm short of the button centre.</td></tr>
             </tbody>
           </table>
         </div>
@@ -306,13 +306,13 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 (function () {
   /* ============ geometry and limits, copied from arm_controller.ino ============ */
   var SH = 60, L1 = 225, L2 = 160;
-  // Sensor board at the end of the second arm. along = further out, down = square to the arm
-  // (towards the ground when level), side + = your right facing the machine (the arm's left).
+  // Sensor array along the axis of the second arm, measured from its end. along = further out,
+  // down = square to the arm (towards the ground when level), side + = your right facing the machine.
   var TOOLS = {
     US:   { name: 'ultrasonic', along: 0,  down: 0,  side: 0,   press: false },
-    RGB:  { name: 'colour',     along: 0,  down: 83, side: 45,  press: false },
-    SND:  { name: 'sound',      along: 0,  down: 42, side: -45, press: false },
-    PUSH: { name: 'pusher',     along: 20, down: 50, side: 0,   press: true }
+    SND:  { name: 'sound',      along: 42, down: 0,  side: -45, press: false },
+    RGB:  { name: 'colour',     along: 83, down: 0,  side: 45,  press: false },
+    PUSH: { name: 'pusher',     along: 0,  down: 50, side: 0,   press: true }
   };
   var MIN = [-90, -15, -90], MAX = [90, 50, 45];
   var ZERO = [0, 0, 0];
@@ -378,9 +378,22 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     return out;
   }
 
+  // Same as pressAtLimit() in arm_controller.ino: hold the 2nd arm at its limit and set the
+  // main arm so the pusher tip is at the right height; the tip lands a little short instead
+  function pressAtLimit(st, p) {
+    p[2] = MAX[2];
+    var want = st.z + st.s, lo = MIN[1], hi = MAX[1], q;
+    for (var it = 0; it < 30; it++) {
+      p[1] = (lo + hi) / 2; q = toolPt(p, st.tool);
+      if (q.z > want) lo = p[1]; else hi = p[1];
+    }
+    log('[ik] ' + st.name + ': 2nd arm held at its limit, pusher tip ' + f(st.r - q.r, 0) + ' mm short of the button centre');
+  }
+
   function stationPose(st) {
     var p = toolIK(st);
     if (!p) { log('[ik] ' + st.name + ' OUT OF REACH'); return null; }
+    if (st.tool && st.tool.press && p[2] > MAX[2]) pressAtLimit(st, p);
     for (var j = 0; j < 3; j++) {
       if (p[j] < MIN[j] || p[j] > MAX[j]) {
         log('[ik] ' + st.name + ' ' + ['base', 'main', '2nd'][j] + ' limit, wanted ' + f(p[j], 2));
@@ -444,13 +457,12 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     // links
     h += '<line x1="' + sx(0) + '" y1="' + sy(SH) + '" x2="' + sx(k.ex) + '" y2="' + sy(k.ez) + '" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"/>';
     h += '<line x1="' + sx(k.ex) + '" y1="' + sy(k.ez) + '" x2="' + sx(k.wx) + '" y2="' + sy(k.wz) + '" stroke="var(--link2)" stroke-width="11" stroke-linecap="round"/>';
-    // sensor board: square to the arm at its end, hanging down to the colour sensor
-    var nx = Math.sin(k.psi), nz = -Math.cos(k.psi);   // "down" direction on the board
-    h += '<line x1="' + sx(k.wx - nx * 12) + '" y1="' + sy(k.wz - nz * 12) + '" x2="' + sx(k.wx + nx * 90) + '" y2="' + sy(k.wz + nz * 90) + '" stroke="var(--muted)" stroke-width="6" stroke-linecap="round"/>';
+    // sensor array: runs on out along the arm axis to the colour sensor at the tip
+    h += '<line x1="' + sx(k.wx) + '" y1="' + sy(k.wz) + '" x2="' + sx(k.rgb.rin) + '" y2="' + sy(k.rgb.z) + '" stroke="var(--muted)" stroke-width="6" stroke-linecap="round"/>';
     h += '<circle cx="' + sx(k.snd.rin) + '" cy="' + sy(k.snd.z) + '" r="6" fill="var(--led-b)" stroke="var(--surface)" stroke-width="1.5"/>';
     h += '<circle cx="' + sx(k.rgb.rin) + '" cy="' + sy(k.rgb.z) + '" r="6" fill="var(--led-r)" stroke="var(--surface)" stroke-width="1.5"/>';
-    h += '<text class="t-txt" x="' + (sx(k.snd.rin) - 9) + '" y="' + (sy(k.snd.z) + 4) + '" text-anchor="end">sound</text>';
-    h += '<text class="t-txt" x="' + (sx(k.rgb.rin) - 9) + '" y="' + (sy(k.rgb.z) + 4) + '" text-anchor="end">RGB</text>';
+    h += '<text class="t-txt" x="' + sx(k.snd.rin) + '" y="' + (sy(k.snd.z) - 10) + '" text-anchor="middle">sound</text>';
+    h += '<text class="t-txt" x="' + (sx(k.rgb.rin) + 9) + '" y="' + (sy(k.rgb.z) - 8) + '">RGB</text>';
     // button pusher bar
     h += '<line x1="' + sx(k.mx) + '" y1="' + sy(k.mz) + '" x2="' + sx(k.px) + '" y2="' + sy(k.pz) + '" stroke="var(--warn)" stroke-width="5" stroke-linecap="round"/>';
     h += '<circle cx="' + sx(k.px) + '" cy="' + sy(k.pz) + '" r="4" fill="' + (btnOn ? 'var(--accent)' : 'var(--warn)') + '"/>';

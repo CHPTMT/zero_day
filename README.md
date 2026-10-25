@@ -18,7 +18,7 @@ Each sketch sits in a folder with the same name, which the Arduino IDE requires.
 
 ## Arm
 
-Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 60 mm above the base plate. On the board, measured from the end of the second arm: ultrasonic at the centre; colour sensor 83 mm down and 45 mm to the right (facing the machine from the front); sound sensor 42 mm down and 45 mm to the left; 50 mm button pusher fixed 20 mm further out, pointing down. Joint angles are relative, 0 at the zero pose:
+Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 60 mm above the base plate. The sensor array runs along the axis of the second arm, measured from its end: ultrasonic at the centre; sound sensor 42 mm further out and 45 mm to the left; colour sensor 83 mm out (the tip) and 45 mm to the right (left and right as seen facing the machine from the front). A 50 mm button pusher hangs below the array at the end of the second arm, square to it, pointing straight down when the arm is level. Joint angles are relative, 0 at the zero pose:
 
 | Joint | Zero | Range |
 |---|---|---|

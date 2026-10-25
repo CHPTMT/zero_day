@@ -108,23 +108,25 @@ const float LINK2_MM           = 160;   // second arm, pivot to the sensor board
 // ======================================================================
 // SENSOR BOARD (mm, measured from where the second arm ends)
 // ======================================================================
-//   along = further out along the second arm
+//   along = further out along the axis of the second arm
 //   down  = square to the arm, towards the ground when the second arm is level
 //   side  = sideways: + is to YOUR RIGHT when you stand in front of the
 //           machine facing it (that is the arm's own left)
-// Every sensor faces outward along the second arm, except the pusher, which
-// presses along its own length (straight down when the second arm is level).
+// The sensor array runs along the axis of the second arm and every sensor
+// faces outward along it. The button pusher hangs below the array at the end
+// of the arm and presses along its own length (straight down when level).
 struct Tool {
   const char *name;
   float along, down, side;
   bool pressDown;   // true: approach along the "down" direction (pusher)
 };
-const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre of the board
-const Tool TOOL_RGB    = {"colour",      0, 83,  45, false};  // tip of the right hand stick
-const Tool TOOL_SOUND  = {"sound",       0, 42, -45, false};  // left hand side
-const Tool TOOL_PUSHER = {"pusher",     20, 50,   0, true};   // 50 mm bar, fixed 20 mm out
-// Pusher note: fixed right at the end of the arm (along 0), Point E needs the
-// second arm at +49, past its +45 limit. 20 mm further out it needs +38.
+const Tool TOOL_US     = {"ultrasonic",  0,  0,   0, false};  // centre, end of the second arm
+const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false};  // 42 mm out, 45 mm to your left
+const Tool TOOL_RGB    = {"colour",     83,  0,  45, false};  // 83 mm out (the tip), 45 mm to your right
+const Tool TOOL_PUSHER = {"pusher",      0, 50,   0, true};   // 50 mm bar below the array, at the arm end
+// Pusher note: with SHOULDER_HEIGHT_MM = 60 Point E needs the second arm at
+// about +49 to press, past its +45 limit, and the press is clamped (it lands
+// a few mm short). Measure the real pivot height: from about 85 mm up it fits.
 
 // Sensor ranges used for the standoffs below
 //   HC-SR04 ultrasonic: 20 mm to 4 m, about 3 mm resolution, 15 deg cone.
@@ -320,12 +322,32 @@ bool toolIK(const Station &s, Pose &out) {
   return true;
 }
 
+// Point E fallback. If pressing needs the second arm past its limit, hold
+// the second arm at the limit and move only the main arm until the pusher
+// tip is at the right height (button top + gap). The tip then lands a little
+// short of the button centre instead of pressing early or not at all.
+bool pressAtLimit(const Station &s, Pose &out) {
+  out.a[J_ELBOW] = REL_MAX[J_ELBOW];
+  float wantZ = s.z + s.standoff;          // pusher points straight down near the limit
+  float lo = REL_MIN[J_MAIN], hi = REL_MAX[J_MAIN], th, r, z;
+  for (uint8_t it = 0; it < 30; it++) {    // tip height falls as the main arm leans forward
+    out.a[J_MAIN] = (lo + hi) / 2;
+    toolPoint(out, *s.tool, th, r, z);
+    if (z > wantZ) lo = out.a[J_MAIN]; else hi = out.a[J_MAIN];
+  }
+  Serial.print(F("[ik] ")); Serial.print(s.name);
+  Serial.print(F(": 2nd arm held at its limit, pusher tip ")); Serial.print(s.r - r, 0);
+  Serial.println(F(" mm short of the button centre"));
+  return true;
+}
+
 // Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
   if (!toolIK(s, out)) {
     Serial.print(F("[ik] ")); Serial.print(s.name); Serial.println(F(" OUT OF REACH"));
     return false;
   }
+  if (s.tool->pressDown && out.a[J_ELBOW] > REL_MAX[J_ELBOW]) pressAtLimit(s, out);
   for (uint8_t j = 0; j < NJ; j++) {
     out.a[j] += s.trim[j];
     if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) {
