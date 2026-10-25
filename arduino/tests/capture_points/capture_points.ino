@@ -101,6 +101,21 @@ const uint16_t GESTURE_STEP_MS = 900;
 const uint16_t GESTURE_PAUSE_MS = 400;
 const float US_MIN_CM = 3, US_MAX_CM = 15;   // detection window at A and B in arm_controller.ino
 
+// ---------------- capture stops (defined before any function, so the IDE's
+// generated prototypes can use them) ----------------
+// Volume indicator, same as arm_controller.ino; one trim for the whole scale.
+Station ST_IND_LO_C = {"the volume indicator (quiet end)", 110, 275, 150, 60, {0, 0, 0}, &TOOL_US};
+Station ST_IND_HI_C = {"the volume indicator (loud end)",  110, 275, 350, 60, {0, 0, 0}, &TOOL_US};
+float indTrim[NJ] = {0, 0, 0};
+
+enum Kind : uint8_t { K_DIST, K_COLOUR, K_SOUND, K_IND, K_PRESS };
+struct Stop { Station *s; Kind kind; };
+Stop STOPS[] = {
+  {&ST_A, K_DIST}, {&ST_B, K_DIST}, {&ST_C, K_COLOUR}, {&ST_D, K_SOUND},
+  {&ST_IND_LO_C, K_IND}, {&ST_IND_HI_C, K_IND}, {&ST_E, K_PRESS},
+};
+const uint8_t NSTOPS = sizeof(STOPS) / sizeof(STOPS[0]);
+
 Servo sBase, sLeft, sRight, sElbow;
 struct Pose { float a[NJ]; };
 Pose cur = {{0, 0, 0}};
@@ -385,18 +400,6 @@ void printSound() {
 // Pose that puts the station's sensor dz mm above (or below) its usual spot,
 
 // ---------------- capture ----------------
-// Volume indicator, same as arm_controller.ino; one trim for the whole scale.
-Station ST_IND_LO_C = {"the volume indicator (quiet end)", 110, 275, 150, 60, {0, 0, 0}, &TOOL_US};
-Station ST_IND_HI_C = {"the volume indicator (loud end)",  110, 275, 350, 60, {0, 0, 0}, &TOOL_US};
-float indTrim[NJ] = {0, 0, 0};
-
-enum Kind : uint8_t { K_DIST, K_COLOUR, K_SOUND, K_IND, K_PRESS };
-struct Stop { Station *s; Kind kind; };
-Stop STOPS[] = {
-  {&ST_A, K_DIST}, {&ST_B, K_DIST}, {&ST_C, K_COLOUR}, {&ST_D, K_SOUND},
-  {&ST_IND_LO_C, K_IND}, {&ST_IND_HI_C, K_IND}, {&ST_E, K_PRESS},
-};
-const uint8_t NSTOPS = sizeof(STOPS) / sizeof(STOPS[0]);
 
 float *trimOf(const Stop &st) { return st.kind == K_IND ? indTrim : st.s->trim; }
 
