@@ -3,11 +3,10 @@
  *
  * 1. Moves every joint to relative 0 and holds for 5 s:
  *      base facing forward, main arm upright, second arm level.
- *    If any joint is not at that position, set it with SETUP in arm_controller
- *    (rest positions and directions are saved in EEPROM and used here too).
+ *    If any joint is not at that position, change its SERVO_ZERO_xxx value.
  * 2. Small direction check: each joint moves +10 then back. Base should turn
  *    LEFT (towards A and B), main arm should lean FORWARD, second arm should tilt UP. If one goes
- *    the other way, flip it with SETUP in arm_controller (fb, fm, fe).
+ *    the other way, flip its xxx_DIR.
  * 3. Full sweep of each joint through its whole allowed range:
  *      base -90 to +90, main arm -15 to +50, second arm -90 to +45.
  *    The two main arm servos always move in opposite directions.
@@ -18,43 +17,18 @@
  *      z     back to zero       s     repeat the sweep    p     print angles
  *
  * Pins: base D2, main left D3, main right D4, second arm D5.
+ * Copy any changed SERVO_ZERO and DIR values into arm_controller.ino.
  */
 
 #include <Servo.h>
-#include <EEPROM.h>
 
 const uint8_t PIN_BASE = 2, PIN_MAIN_LEFT = 3, PIN_MAIN_RIGHT = 4, PIN_ELBOW = 5;
 
-int8_t dirBase = 1, dirMain = 1, dirElbow = 1;   // loaded from EEPROM with the rest positions
-// Rest positions (pulse width in microseconds, 1500 = middle of the servo's
-// travel). Read from the EEPROM values saved by arm_controller's SETUP,
-// so every sketch uses the same rest position. Same as arm_controller.ino.
-enum ServoId : uint8_t { S_BASE = 0, S_LEFT = 1, S_RIGHT = 2, S_ELBOW = 3, NS = 4 };
-const int   ZERO_US_DEFAULT[NS] = {1500, 1500, 1500, 1500};
-const float US_PER_DEG = 1000.0 / 90.0;
-const int   SERVO_MIN_US = 500, SERVO_MAX_US = 2500;
-const float BASE_GEAR_RATIO = 1.0;
-int zeroUs[NS];
-
-void loadZeros() {
-  uint8_t mark = EEPROM.read(8);
-  bool saved = mark == 0x5A || mark == 0x5B;
-  for (uint8_t i = 0; i < NS; i++) {
-    int16_t v = ZERO_US_DEFAULT[i];
-    if (saved) EEPROM.get(10 + 2 * i, v);
-    zeroUs[i] = (v >= SERVO_MIN_US && v <= SERVO_MAX_US) ? v : ZERO_US_DEFAULT[i];
-  }
-  if (mark == 0x5B) {   // directions saved too (stored as 1 or 0xFF for -1)
-    dirBase  = EEPROM.read(18) == 0xFF ? -1 : 1;
-    dirMain  = EEPROM.read(19) == 0xFF ? -1 : 1;
-    dirElbow = EEPROM.read(20) == 0xFF ? -1 : 1;
-  }
-}
-
-int pulseAt(uint8_t s, float deg) {
-  return constrain((int)round(zeroUs[s] + deg * US_PER_DEG), SERVO_MIN_US, SERVO_MAX_US);
-}
-
+const int SERVO_ZERO_BASE  = 90;
+const int SERVO_ZERO_LEFT  = 90;
+const int SERVO_ZERO_RIGHT = 90;
+const int SERVO_ZERO_ELBOW = 90;
+const int8_t BASE_DIR = 1, MAIN_DIR = 1, ELBOW_DIR = 1;
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
@@ -65,17 +39,27 @@ const char KEYS[NJ] = {'b', 'm', 'e'};
 Servo sBase, sLeft, sRight, sElbow;
 float cur[NJ] = {0, 0, 0};
 
+int rawClamp(float v) { return constrain((int)round(v), 0, 180); }
+
+// Servo pulse for an angle, keeping fractions of a degree. write() only moves
+// in whole degrees, which makes slow moves step visibly; writeMicroseconds()
+// moves in about 0.1 degree steps. 544 and 2400 us are the Servo library's own
+// 0 and 180 degree pulses, so the angles match what write() would give.
+int pulseFor(float deg) {
+  deg = constrain(deg, 0.0, 180.0);
+  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+}
 
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
   cur[j] = rel;
   if (j == J_BASE) {
-    sBase.writeMicroseconds(pulseAt(S_BASE, dirBase * BASE_GEAR_RATIO * rel));
+    sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
   } else if (j == J_MAIN) {
-    sLeft.writeMicroseconds(pulseAt(S_LEFT, dirMain * rel));
-    sRight.writeMicroseconds(pulseAt(S_RIGHT, -dirMain * rel));
+    sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
+    sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT - MAIN_DIR * rel));
   } else {
-    sElbow.writeMicroseconds(pulseAt(S_ELBOW, dirElbow * rel));
+    sElbow.writeMicroseconds(pulseFor(SERVO_ZERO_ELBOW + ELBOW_DIR * rel));
   }
 }
 
@@ -93,8 +77,8 @@ void glide(uint8_t j, float target) {
 void printAngles() {
   Serial.print(F("Now: base ")); Serial.print(cur[J_BASE], 0);
   Serial.print(F(" degrees, main arm ")); Serial.print(cur[J_MAIN], 0);
-  Serial.print(F(" degrees (left servo ")); Serial.print(pulseAt(S_LEFT, dirMain * cur[J_MAIN]));
-  Serial.print(F(" us, right servo ")); Serial.print(pulseAt(S_RIGHT, -dirMain * cur[J_MAIN])); Serial.print(F(" us"));
+  Serial.print(F(" degrees (left servo at ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + MAIN_DIR * cur[J_MAIN]));
+  Serial.print(F(", right servo at ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT - MAIN_DIR * cur[J_MAIN]));
   Serial.print(F("), second arm ")); Serial.print(cur[J_ELBOW], 0); Serial.println(F(" degrees."));
 }
 
@@ -108,7 +92,7 @@ void directionCheck() {
   const char *expect[NJ] = {"should turn LEFT, towards A and B", "should lean FORWARD", "should tilt UP"};
   for (uint8_t j = 0; j < NJ; j++) {
     Serial.print(F("Moving the ")); Serial.print(NAMES[j]); Serial.print(F(" 10 degrees. It ")); Serial.print(expect[j]);
-    Serial.println(F(". If not, flip it with SETUP in arm_controller (fb, fm or fe)."));
+    Serial.println(F(". If not, flip its DIR value."));
     glide(j, 10);
     delay(1500);
     glide(j, 0);
@@ -155,17 +139,16 @@ void handle(String cmd) {
 
 void setup() {
   Serial.begin(115200);
-  loadZeros();
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
-  sBase.attach(PIN_BASE, SERVO_MIN_US, SERVO_MAX_US);
-  sLeft.attach(PIN_MAIN_LEFT, SERVO_MIN_US, SERVO_MAX_US);
-  sRight.attach(PIN_MAIN_RIGHT, SERVO_MIN_US, SERVO_MAX_US);
-  sElbow.attach(PIN_ELBOW, SERVO_MIN_US, SERVO_MAX_US);
+  sBase.attach(PIN_BASE);
+  sLeft.attach(PIN_MAIN_LEFT);
+  sRight.attach(PIN_MAIN_RIGHT);
+  sElbow.attach(PIN_ELBOW);
   for (uint8_t j = 0; j < NJ; j++) writeJoint(j, 0);
 
   Serial.println(F("\nSERVO TEST"));
   Serial.println(F("Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level."));
-  Serial.println(F("If any joint is not in that position, set it with SETUP in arm_controller (saved in EEPROM)."));
+  Serial.println(F("If any joint is not in that position, adjust its SERVO_ZERO value."));
   printAngles();
   delay(5000);
 
