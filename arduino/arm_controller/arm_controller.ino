@@ -30,8 +30,8 @@
  *   brief and the arm dimensions below (two link inverse kinematics). The
  *   sensor board sits at the end of the second arm; each sensor's own offset
  *   on the board (see SENSOR BOARD) is used, so the right sensor is aimed at
- *   each station with a standoff (gap between the sensor and the target). Fine tune a station with
- *   its trim values instead of changing the maths.
+ *   each station with a standoff (gap between the sensor and the target).
+ *   Fine tune a station with its trim values instead of changing the maths.
  *
  * QUICK EDITS ON THE DAY
  *   Word: type it in the Serial Monitor during the 5 s zero hold (e.g. NET).
@@ -39,7 +39,8 @@
  *   Fallback: set RUN_TASK_x to false to skip a task that keeps failing.
  *   Re-run: press the Uno reset button.
  *
- * Libraries: Servo, Adafruit TCS34725
+ * Libraries: Servo, Wire and EEPROM come with the Arduino IDE. The colour sensor
+ * library (Adafruit TCS34725) is bundled in the src folder, so nothing needs installing.
  */
 
 #include <Servo.h>
@@ -624,7 +625,6 @@ const char *morseFor(char c) {
 
 Pose pressPose, hoverPose;
 
-// Snap (no easing) so the contact time matches the commanded time.
 // One press: ease down onto the button, hold, ease back up. The button closes
 // about halfway down each move, so the hold is cut by one move time to keep
 // the press the receiver sees close to `ms`.
