@@ -35,7 +35,7 @@ Beeps: Task N beeps N times when it starts and N times when it ends, then a 2 s 
 
 ## Detection limits at A and B
 
-The arm stops with the ultrasonic 10 cm from A and 7 cm from B, so an object reads about 10 or 7 cm. At B the colour sensor, 83 mm further out along the arm, reaches just past the point, so make sure it clears the object or stand there. The code counts an object when the reading is 3 to 15 cm (`US_A_MIN_CM`, `US_A_MAX_CM`, `US_B_MIN_CM`, `US_B_MAX_CM`), and only if at least 3 of the 5 pings echo back.
+The arm stops with the ultrasonic 10 cm from A and 7 cm from B, so an object reads about 10 or 7 cm. At B the colour sensor, 83 mm further out along the arm, reaches just past the point, so make sure it clears the object or stand there. The code counts an object when the reading is 2 to 25 cm, and if nothing is straight ahead it looks a little left, right, up and down before deciding. It counted 3 to 15 cm before (`US_A_MIN_CM`, `US_A_MAX_CM`, `US_B_MIN_CM`, `US_B_MAX_CM`), and only if at least 3 of the 5 pings echo back.
 
 - 3 cm minimum: the HC-SR04 cannot measure closer than about 2 to 3 cm, and readings below that are noise.
 - 15 cm maximum: the standoff plus a margin for positioning error. The sensor's cone is about 15 degrees, so at 15 cm it already covers a circle about 8 cm across. Raising the limit to 20 cm or more lets it see the stand, the plate or the table behind the point and report an object that is not there.
@@ -74,6 +74,10 @@ Stack books or boxes to each height and tape a 5 x 5 cm card at A and B facing t
 1. `test_combined` visits every point. Check each lands where the table says, and trim any station that is off.
 2. `arm_controller` with a card at A only: expect `Point A: object found, about 10 cm away` and a YES nod. Card at B only: NO shake. No cards: BOX.
 3. Change the paper colour, tap soft and hard, change the word, and check the summary each time.
+
+## Start-up
+
+After reset the servos creep to the rest position one at a time (second arm, main arm, then the base, slowest) instead of jumping there. This takes about 8 seconds; leave the arm alone until the LED check beeps. If the base still jumps, raise `SOFT_BURSTS_BASE`.
 
 ## During the 5 minute changeover
 

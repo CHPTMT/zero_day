@@ -1,0 +1,52 @@
+{
+  "material": {
+    "E_MPa": 800.0,
+    "nu": 0.35,
+    "density_kg_m3": 500,
+    "strength_MPa": 15.0
+  },
+  "dynamic_factor": 2.0,
+  "verification": {
+    "tip_fe": -0.24672398662324144,
+    "tip_beam": -0.252025,
+    "err_pct": -2.10336806934176,
+    "stress_fe_at_65mm": 0.09009904668389487,
+    "stress_beam_at_65mm": 0.10124999999999999
+  },
+  "second_arm_case_A": {
+    "label": "Second arm, own weight and head x2",
+    "elements": 9072,
+    "dof": 42462,
+    "link_mass_g": 36.3,
+    "max_von_mises_MPa": 0.082,
+    "peak_at_clamp_MPa": 0.082,
+    "safety_factor": 184.0,
+    "tip_deflection_mm": 0.05
+  },
+  "second_arm_case_B": {
+    "label": "Second arm pressing: weight x1 with the full button-press reaction",
+    "elements": 9072,
+    "dof": 42462,
+    "link_mass_g": 36.3,
+    "max_von_mises_MPa": 0.023,
+    "peak_at_clamp_MPa": 0.023,
+    "safety_factor": 659.0,
+    "tip_deflection_mm": 0.016
+  },
+  "main_arm": {
+    "label": "Main arm at 50 deg, second arm level, all weights x2",
+    "elements": 12096,
+    "dof": 54936,
+    "link_mass_g": 94.5,
+    "max_von_mises_MPa": 0.075,
+    "peak_at_clamp_MPa": 0.085,
+    "safety_factor": 198.9,
+    "tip_deflection_mm": 0.088
+  },
+  "loads": {
+    "head_g": 46.0,
+    "press_reaction_N": 0.962,
+    "elbow_force_N": 1.791,
+    "elbow_moment_Nmm": 201.4
+  }
+}
