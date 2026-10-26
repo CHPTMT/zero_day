@@ -253,10 +253,11 @@ const float    GESTURE_SPEED_DEG_S = 36;   // gestures run 20% faster than ordin
 
 // Point E press. Each press drives the pusher tip straight down, from
 // PRESS_TRAVEL_MM above the button to PRESS_DEPTH_MM into it, and straight
-// back up, fast and firm: a 90 mm stroke, 70 mm of it in clear view. The main arm and second arm move
-// together to keep it vertical. Aiming 20 mm past contact (plus the extra
-// lean below) keeps the servos pushing hard for the whole hold, and still
-// presses with the button anywhere from 30 mm higher to 32 mm lower than expected.
+// back up, fast and firm: a 90 mm stroke, 70 mm of it in clear view. The
+// main arm and second arm move together to keep it vertical. Aiming 20 mm
+// past contact (plus the extra lean below) keeps the servos pushing hard for
+// the whole hold, and still presses with the button anywhere from 50 mm
+// higher to 32 mm lower than expected.
 const float    PRESS_SPEED_DEG_S  = 120;
 const float PRESS_TRAVEL_MM   = 70;   // the pusher tip waits this far above the button (85 puts the second arm at its +60 limit)
 const float PRESS_DEPTH_MM    = 20;   // and pushes this far down past contact
