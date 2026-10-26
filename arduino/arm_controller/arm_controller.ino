@@ -5,9 +5,9 @@
  * Sequence (state machine, fully autonomous after reset):
  *   ZERO    all joints at relative 0 for 5 s (also the window to type the word)
  *   TASK 1  Points A and B: ultrasonic presence, then one gesture:
- *           YES  sensor moves straight up and down (object at A)
+ *           YES  the head nods up and down (object at A)
  *           NO   base turns left and right (object at B)
- *           BOX  sensor traces a square, both together (nothing at A or B)
+ *           BOX  the head traces a square, both together (nothing at A or B)
  *   TASK 2  Point C: colour sensor, the red, green or blue LED lights
  *   TASK 3  Point D: capture a tap, point at a height on the volume indicator
  *   TASK 4  Point E: press the button in Morse for the 3 letter word; each
