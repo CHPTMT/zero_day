@@ -234,7 +234,7 @@ const uint8_t  STEP_MS      = 20;    // one servo update per 20 ms servo frame
 const float    MAX_SPEED_DEG_S = 30;  // top joint speed. Lower it for slower, gentler moves
 const float    BASE_SPEED_DEG_S = 18; // the base is held slower than the other joints, so a long
                                       // swing (A to E is 160 degrees) never yanks the base gear
-const float    GESTURE_BASE_SPEED_DEG_S = 24;   // base speed limit while shaking NO or drawing BOX
+const float    GESTURE_BASE_SPEED_DEG_S = 15;   // base speed limit while shaking NO or drawing BOX (gentle)
 const uint16_t SETTLE_MS    = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point this long before doing anything there
 const bool     USE_TRAVEL   = true;          // lift before turning the base
@@ -248,13 +248,13 @@ const float    LIFT_TURN_DEG = 25;           // between A and B the base turns t
 //   YES  the second arm nods the head up and down (vertical line), 2 nods
 //   NO   the base turns left and right (horizontal line), 2 shakes
 //   BOX  the head traces a square: base left and right, second arm up and down
-const float    GESTURE_NOD_DEG = 20;    // YES: second arm tilts this far up and down (head moves about 140 mm)
-const float    GESTURE_DEG     = 25;    // NO and BOX: base turns this far each way (50 degree swing)
-const float    BOX_HEIGHT_DEG  = 40;    // BOX: second arm rises this far from B's pose, so the square stays above B
+const float    GESTURE_NOD_DEG = 12;    // YES: second arm tilts this far up and down (head moves about 80 mm)
+const float    GESTURE_DEG     = 15;    // NO and BOX: base turns this far each way (30 degree swing)
+const float    BOX_HEIGHT_DEG  = 24;    // BOX: second arm rises this far from B's pose, so the square stays above B
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
-const uint16_t GESTURE_STEP_MS = 720;   // time for each half swing (20% quicker than before)
-const uint16_t GESTURE_PAUSE_MS = 320;  // short stop at each end of a swing, so the shape reads clearly
-const float    GESTURE_SPEED_DEG_S = 36;   // gestures run 20% faster than ordinary moves
+const uint16_t GESTURE_STEP_MS = 1000;  // shortest time for each half swing
+const uint16_t GESTURE_PAUSE_MS = 400;  // stop at each end of a swing, so the arm settles and the shape reads clearly
+const float    GESTURE_SPEED_DEG_S = 20;   // gestures run slower than ordinary moves, so they stay smooth
 
 // Point E press. Each press drives the pusher tip straight down, from
 // PRESS_TRAVEL_MM above the button to PRESS_DEPTH_MM into it, and straight
@@ -754,7 +754,7 @@ void goToStation(const Station &s) {
 // GESTURES
 // ======================================================================
 // Middle of the base swing, moved in from a limit so both ends are reachable
-// (at A and B the base is 80 left, so NO and BOX swing about 62).
+// (at A and B the base is 80 left, so NO and BOX swing about 72).
 float baseCentre() {
   return constrain(cur.a[J_BASE], REL_MIN[J_BASE] + GESTURE_DEG + 3, REL_MAX[J_BASE] - GESTURE_DEG - 3);   // 3 deg clear of the servo end stop
 }
