@@ -23,7 +23,8 @@
  *           press pushes the pusher straight down onto the button and back up
  *   FINISH  back to zero, print a summary
  * Beeper on D11: task N beeps N times when it starts and N times when it
- * ends, then a 2 s pause before the next task.
+ * ends, then a 2 s pause before the next task (TASK_BEEPS = false turns the
+ * beeps off). From power up the run starts after the 5 s rest hold.
  * Everything the arm does and senses is printed to the Serial Monitor
  * (115200 baud). A 16x2 I2C LCD on A2 (SDA) and A3 (SCL) shows the task in
  * progress, the distances at A and B and each task's result, then cycles
@@ -125,9 +126,10 @@ const int   BASE_US_MAX = 2500;
 // sends it to rest at full speed, which jerks the arm and can lift the base
 // gear out of the turntable groove. Instead each servo gets short bursts of
 // pulses with pauses in between and creeps to rest. The base goes last and
-// slowest. Raise SOFT_BURSTS_BASE if the base still jumps.
-const uint8_t  SOFT_BURSTS       = 15;    // bursts for the second arm and the main arm
-const uint8_t  SOFT_BURSTS_BASE  = 30;    // bursts for the base
+// slowest. It takes about 4 s and runs inside the 5 s rest hold, so it adds
+// no time. Raise SOFT_BURSTS_BASE if the base still jumps.
+const uint8_t  SOFT_BURSTS       = 8;     // bursts for the second arm and the main arm
+const uint8_t  SOFT_BURSTS_BASE  = 14;    // bursts for the base
 const uint8_t  SOFT_ON_MS        = 22;    // one servo frame of pulses per burst
 const uint8_t  SOFT_OFF_MS       = 110;   // rest between bursts
 
@@ -138,7 +140,7 @@ const uint8_t  SOFT_OFF_MS       = 110;   // rest between bursts
 // whole swing is clear (cables, stands), beds the base gear in its groove,
 // and makes a wrong SERVO_ZERO_BASE obvious: if the arm does not face
 // straight forward after the sweep, change SERVO_ZERO_BASE.
-const bool     START_SWEEP     = true;
+const bool     START_SWEEP     = false;   // off: the run starts after the 5 s hold. true adds the 30 s sweep
 const float    START_SWEEP_DEG = 85;    // each way from the middle (the servo end stops are at 90)
 
 // Direction of each joint. Flip to -1 if the joint moves the wrong way.
@@ -284,6 +286,7 @@ const uint16_t BEEP_HZ         = 2500;
 const uint16_t BEEP_MS         = 120;   // one quick beep
 const uint16_t BEEP_GAP_MS     = 180;   // silence between beeps
 const uint16_t TASK_GAP_MS     = 2000;  // pause after a task's end beeps
+const bool     TASK_BEEPS      = true;  // task N beeps N times at its start and end. false = no beeps
 
 // ======================================================================
 // SENSOR THRESHOLDS
@@ -313,7 +316,6 @@ const uint16_t COLOUR_MIN_CLEAR = 30;
 const uint8_t  COLOUR_SAMPLES   = 5;
 const float    COLOUR_WAVE_BASE_DEG  = 5;   // at C the sensor waves this far left and right
 const float    COLOUR_WAVE_ELBOW_DEG = 4;   // and this far up and down, to cover more of the small target
-const uint16_t LED_CHECK_MS     = 1000;   // each colour shown alone at start up
 const uint16_t SCAN_SETTLE_MS   = 250;    // still time after each small scan move before reading
 
 // Fine search (the arm_controller_fine sketch sets FINE_SEARCH to true).
@@ -960,22 +962,6 @@ float colourScore() {
   return colourStrength(r, g, b, c);
 }
 
-// Start up check: red, green and blue LEDs one at a time, one second each,
-// with a beep, so a wrong wire or a dead LED or beeper shows straight away.
-void ledCheck() {
-  const char order[3] = {'R', 'G', 'B'};
-  const __FlashStringHelper *pin[3] = {F("D8"), F("D9"), F("D10")};
-  for (uint8_t i = 0; i < 3; i++) {
-    Serial.print(F("LED check: only ")); Serial.print(colourName(order[i]));
-    Serial.print(F(" should be lit now (")); Serial.print(pin[i]); Serial.println(F(")."));
-    setColourLed(order[i]);
-    beeps(1);
-    delay(LED_CHECK_MS);
-  }
-  setColourLed('-');
-  Serial.println(F("LED check done: red, green, blue, each alone with a beep."));
-}
-
 // Waves the sensor over the target (centre, left, right, up, down), lights
 // the LED for what it sees at each spot, and keeps the clearest reading.
 // Always returns R, G or B, so the LED always shows a colour.
@@ -1173,9 +1159,8 @@ void loadWord() {
   if (!validWord(targetWord)) strcpy(targetWord, DEFAULT_WORD);
 }
 
-// Hold the zero pose for ZERO_HOLD_MS. Any 3 letter word typed in that
-// time becomes the target word.
-void holdZeroAndReadWord() {
+// The 5 s rest hold: says what is happening and how to change the word.
+void announceHold() {
   Serial.print(F("Holding the rest position for "));
   Serial.print(ZERO_HOLD_MS / 1000);
   Serial.println(F(" seconds: base facing forward, main arm upright, second arm level."));
@@ -1183,10 +1168,14 @@ void holdZeroAndReadWord() {
   Serial.println(F(". To change it, type a new 3-letter word now and press Enter."));
   lcdShow(F("Rest position 5s"));
   lcd.print(F("Word: ")); lcd.print(targetWord);
+}
+
+// Wait until ZERO_HOLD_MS after `start`. Any 3 letter word typed in that time
+// (also while the servos were creeping to rest) becomes the target word.
+void holdZeroAndReadWord(unsigned long start) {
   char buf[8];
   uint8_t n = 0;
-  unsigned long start = millis();
-  while (millis() - start < ZERO_HOLD_MS) {
+  while (millis() - start < ZERO_HOLD_MS || Serial.available()) {
     if (!Serial.available()) continue;
     char c = toupper(Serial.read());
     if (c == '\n' || c == '\r') {
@@ -1328,11 +1317,15 @@ void task4() {
 
 // Task n: n beeps, the task, n beeps, then a 2 s pause.
 void runTask(uint8_t n, void (*task)()) {
-  Serial.print(F("Beep x")); Serial.print(n); Serial.print(F(": start of Task ")); Serial.print(n); Serial.println('.');
-  beeps(n);
+  if (TASK_BEEPS) {
+    Serial.print(F("Beep x")); Serial.print(n); Serial.print(F(": start of Task ")); Serial.print(n); Serial.println('.');
+    beeps(n);
+  }
   task();
-  Serial.print(F("Beep x")); Serial.print(n); Serial.print(F(": end of Task ")); Serial.print(n); Serial.println('.');
-  beeps(n);
+  if (TASK_BEEPS) {
+    Serial.print(F("Beep x")); Serial.print(n); Serial.print(F(": end of Task ")); Serial.print(n); Serial.println('.');
+    beeps(n);
+  }
   delay(TASK_GAP_MS);
 }
 
@@ -1384,16 +1377,6 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   setColourLed('-');
 
-  Serial.println(F("\nMoving gently to rest (8 s), then sweeping the base (30 s)."));
-  // Write zero first, then let each servo creep to it: second arm, main arm,
-  // then the base, slowest of all (see SOFT_BURSTS).
-  writePose(ZERO_POSE);
-  softAttach(sElbow, PIN_ELBOW, SOFT_BURSTS);
-  softAttachPair(SOFT_BURSTS);
-  softAttach(sBase, PIN_BASE, SOFT_BURSTS_BASE);
-  writePose(ZERO_POSE);
-  if (START_SWEEP) baseSweep();
-
   Serial.println(F("\nGroup 31 robotic arm: demonstration program starting."));
   if (lcd.begin()) {
     Serial.print(F("LCD monitor: found at 0x")); Serial.print(lcd.addr, HEX); Serial.println('.');
@@ -1405,10 +1388,21 @@ void setup() {
   Serial.println(tcsOk ? F("Colour sensor: connected.")
                        : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires. Point C will light red by default."));
 
-  ledCheck();
   loadWord();
+
+  // The 5 s rest hold starts now. The servos creep to rest inside it (second
+  // arm, main arm, then the base, slowest of all; see SOFT_BURSTS), so the run
+  // starts 5 s after power up.
+  unsigned long holdStart = millis();
+  announceHold();
+  writePose(ZERO_POSE);
+  softAttach(sElbow, PIN_ELBOW, SOFT_BURSTS);
+  softAttachPair(SOFT_BURSTS);
+  softAttach(sBase, PIN_BASE, SOFT_BURSTS_BASE);
+  writePose(ZERO_POSE);
+  if (START_SWEEP) baseSweep();
   printPosition("the rest position");
-  holdZeroAndReadWord();
+  holdZeroAndReadWord(holdStart);
   Serial.print(F("Using the Morse word ")); Serial.print(targetWord); Serial.println('.');
 }
 

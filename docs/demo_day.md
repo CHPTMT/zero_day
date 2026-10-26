@@ -79,9 +79,7 @@ Stack books or boxes to each height and tape a 5 x 5 cm card at A and B facing t
 
 ## Start-up
 
-After reset the servos creep to the rest position one at a time (second arm, main arm, then the base, slowest) instead of jumping there. This takes about 8 seconds; leave the arm alone until the LED check beeps. If the base still jumps, raise `SOFT_BURSTS_BASE`.
-
-Then the base sweep: the head lifts, the base turns slowly to its far left (85 degrees), then its far right, then the middle, and the arm returns to rest (about 30 s). The servo cannot report its position, so the sweep does not measure the middle; the middle is halfway between the two ends it was sent to, which is `SERVO_ZERO_BASE`. What the sweep does is show that the whole swing is clear of cables and stands, bed the base gear in its groove before the run, and make a wrong `SERVO_ZERO_BASE` obvious: if the arm does not face straight forward after the sweep, change it. Throughout the run the base is held to 18 degrees per second (24 while shaking NO or drawing BOX), slower than the other joints, so long swings never yank the gear.
+After reset the run starts after the 5 s rest hold. Inside that hold the servos creep to the rest position one at a time (second arm, main arm, then the base, slowest) instead of jumping there, which takes about 4 s; type the word during the hold as before. If the base still jumps, raise `SOFT_BURSTS_BASE`. The 30 s base sweep is switched off (`START_SWEEP = false`); turn it on when fitting the turntable or checking the swing. The start-up LED check is gone. Task beeps stay on; `TASK_BEEPS = false` turns them off.
 
 ## During the 5 minute changeover
 
@@ -91,7 +89,7 @@ Then the base sweep: the head lifts, the base turns slowly to its far left (85 d
 
 ## During the 10 minute slot
 
-- Press reset to start each attempt. A run takes about three and a half minutes, including the 8 s soft start and the 30 s base sweep (set `START_SWEEP` to false to skip the sweep if time is short).
+- Press reset to start each attempt. A run takes about three minutes, starting 5 s after reset.
 - Run at least twice; the tutors change conditions between runs. The best attempt counts.
 - If one task keeps failing, set its `RUN_TASK_x` to false and upload so the other tasks still score.
 - One person films every attempt.
