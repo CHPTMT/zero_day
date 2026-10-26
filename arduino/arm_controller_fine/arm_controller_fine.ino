@@ -117,9 +117,10 @@ const int SERVO_ZERO_ELBOW = 90;
 // nudge it onto the point and paste the BASE_GAIN line it prints (1.0 = no
 // correction). The SG92R's full travel needs pulses of about 500 to 2500 us,
 // a little wider than the 544 to 2400 us the Servo library uses by default.
-const float BASE_GAIN   = 1.0;
-const int   BASE_US_MIN = 500;
-const int   BASE_US_MAX = 2500;
+const float BASE_GAIN   = 1.2;   // the base stopped short of A and B at 1.0, so every base move is 20% bigger.
+                                // Raise to 1.3 if it still stops short; lower to 1.1 if it overshoots or buzzes
+const int   BASE_US_MIN = 450;   // pulse limits for the base, wide enough for the gain above
+const int   BASE_US_MAX = 2550;
 
 // Rest position (every servo at 90): base facing straight forward, main arm
 // upright, second arm level and pointing straight out from the main arm.

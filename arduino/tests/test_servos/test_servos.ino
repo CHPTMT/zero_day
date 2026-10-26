@@ -37,8 +37,8 @@ const int SERVO_ZERO_BASE  = 90;
 const int SERVO_ZERO_LEFT  = 90;
 const int SERVO_ZERO_RIGHT = 90;
 const int SERVO_ZERO_ELBOW = 90;
-const float BASE_GAIN   = 1.0;    // same as arm_controller.ino (from tests/test_base)
-const int   BASE_US_MIN = 500, BASE_US_MAX = 2500;   // SG92R full travel
+const float BASE_GAIN   = 1.2;    // same as arm_controller.ino (from tests/test_base)
+const int   BASE_US_MIN = 450, BASE_US_MAX = 2550;   // same as arm_controller.ino
 const int8_t BASE_DIR = 1, MAIN_DIR = -1, ELBOW_DIR = 1;   // MAIN_DIR -1: same as arm_controller
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
