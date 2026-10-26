@@ -284,7 +284,7 @@ void printPosition(const char *label) {
 
 void goToPose(const Pose &p, const char *label) {
   if (fabs(cur.a[J_BASE] - p.a[J_BASE]) > 1) {
-    Pose lift = {{cur.a[J_BASE], 0, 15}};
+    Pose lift = {{cur.a[J_BASE], 0, 30}};
     moveTo(lift, MOVE_MS);
     lift.a[J_BASE] = p.a[J_BASE];
     moveTo(lift, BASE_TURN_MS);
@@ -430,7 +430,7 @@ void runAll() {
 
   if (goToStation(ST_A)) { printDistance("Point A"); gestureYes(ST_A); }
   Serial.println(F("Leaving the point: lifting up and turning towards the front."));
-  { Pose lift = {{cur.a[J_BASE], 0, 15}}; moveTo(lift, MOVE_MS);
+  { Pose lift = {{cur.a[J_BASE], 0, 30}}; moveTo(lift, MOVE_MS);
     lift.a[J_BASE] -= (cur.a[J_BASE] > 0 ? 1 : -1) * LIFT_TURN_DEG; moveTo(lift, BASE_TURN_MS); delay(POINT_HOLD_MS / 2); }
   Serial.println(F("Going down to Point B, the lower point."));
   if (goToStation(ST_B)) { printDistance("Point B"); gestureNo(); gestureBox(ST_B); }

@@ -846,7 +846,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
 
   async function goToPose(p, label, id) {
     if (Math.abs(cur[0] - p[0]) > 1) {
-      await moveTo([cur[0], 0, 15], 1200, id);
+      await moveTo([cur[0], 0, 30], 1200, id);
       await moveTo([p[0], 0, 15], 1500, id);
     }
     await moveTo(p, 1200, id);
@@ -857,7 +857,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
   // Same as liftClear(): back to the travel pose between A and B
   async function liftClear(id) {
     log('Leaving the point: lifting up and turning towards the front.');
-    await moveTo([cur[0], 0, 15], 1200, id);
+    await moveTo([cur[0], 0, 30], 1200, id);
     await moveTo([cur[0] - (cur[0] > 0 ? 25 : -25), 0, 15], 1500, id);
     await sleep(HOLD / 2, id);
   }

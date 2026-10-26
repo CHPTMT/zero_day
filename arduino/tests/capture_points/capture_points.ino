@@ -305,7 +305,7 @@ void printPosition(const char *label) {
 
 void goToPose(const Pose &p, const char *label) {
   if (fabs(cur.a[J_BASE] - p.a[J_BASE]) > 1) {
-    Pose lift = {{cur.a[J_BASE], 0, 15}};
+    Pose lift = {{cur.a[J_BASE], 0, 30}};
     moveTo(lift, MOVE_MS);
     lift.a[J_BASE] = p.a[J_BASE];
     moveTo(lift, BASE_TURN_MS);

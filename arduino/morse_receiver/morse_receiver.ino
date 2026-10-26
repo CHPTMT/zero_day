@@ -6,16 +6,24 @@
  * from the arm controller. The only input is the push button.
  *
  * How it decodes
- *   press shorter than 1100 ms  -> dot
- *   press 1100 ms or longer     -> dash
- *   release longer than 1300 ms -> end of letter
+ *   press shorter than 1250 ms  -> dot
+ *   press 1250 ms or longer     -> dash
+ *   release longer than 1200 ms -> end of letter
  *   release longer than 3000 ms -> end of word, word shown on the LCD
- * The arm aims for dot 600 ms, dash 1800 ms, 600 ms inside a letter and
- * 1800 ms between letters. Measured from the pusher's real motion the button
- * sees dots 400 to 600 ms, dashes 1600 to 1800 ms, gaps 700 to 900 ms inside a
- * letter and 1780 to 1980 ms between letters. The split points sit halfway
- * between those bands, about 400 ms clear of each. Hand presses at a similar
- * pace also work, so markers can test their own words.
+ *
+ * What the arm sends (arm_controller.ino): dot 600 ms, dash 1800 ms, 600 ms
+ * between the presses of a letter, 1800 ms between letters, then at least
+ * 3.6 s of silence after the word. Each press drives the pusher straight
+ * down fast and 12 mm past the button, so the button sees:
+ *   dots 520 to 800 ms, dashes 1720 to 2000 ms,
+ *   gaps inside a letter 400 to 800 ms, gaps between letters 1600 to 1880 ms
+ * for a button anywhere from 30 mm higher to 12 mm lower than expected.
+ * The split points sit between those bands with at least 400 ms to spare.
+ *
+ * Bounce: a pusher arriving fast can make the contact chatter for a few tens
+ * of ms. A release shorter than BOUNCE_GAP_MS is treated as part of the same
+ * press, and a press shorter than MIN_PRESS_MS is ignored as noise.
+ * Hand presses at a similar pace also work, so markers can test their own words.
  *
  * Wiring
  *   Push button: one side to pin 7, other side to GND (internal pull-up).
@@ -24,7 +32,7 @@
  *        D4 5, D5 4, D6 3, D7 2.
  *   Pin 13 onboard LED lights while the button is held.
  *
- * Libraries: LiquidCrystal I2C (Frank de Brabander) or LiquidCrystal
+ * Libraries: LiquidCrystal I2C (Frank de Brabander, bundled in src/) or LiquidCrystal
  */
 
 #define LCD_I2C 1
@@ -39,14 +47,14 @@ LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 #endif
 
 // ----------------------------------------------------------------------
-// SETTINGS (MORSE_UNIT_MS must match arm_controller.ino)
+// SETTINGS (must suit MORSE_UNIT_MS = 600 in arm_controller.ino)
 // ----------------------------------------------------------------------
-const uint16_t MORSE_UNIT_MS  = 600;   // two times slower, to go easy on the arm
-const uint16_t DASH_MIN_MS    = 1100;   // press at least this long = dash
-const uint16_t LETTER_GAP_MS  = 1300;   // silence that ends a letter
+const uint16_t DASH_MIN_MS    = 1250;   // press at least this long = dash
+const uint16_t LETTER_GAP_MS  = 1200;   // silence that ends a letter
 const uint16_t WORD_GAP_MS    = 3000;   // silence that ends a word
-const uint16_t DEBOUNCE_MS    = 15;                 // contact must be stable this long
-const uint16_t MIN_PRESS_MS   = 40;                 // shorter presses are noise
+const uint16_t DEBOUNCE_MS    = 20;     // contact must be steady this long to count
+const uint16_t BOUNCE_GAP_MS  = 100;    // a shorter release is the same press bouncing
+const uint16_t MIN_PRESS_MS   = 100;    // a shorter press is noise
 
 const uint8_t PIN_BUTTON = 7;
 const uint8_t PIN_LED    = 13;
@@ -75,17 +83,19 @@ char decodeSymbol(const char *code) {
 // ----------------------------------------------------------------------
 // DECODER STATE
 // ----------------------------------------------------------------------
-char code[8];          // dots and dashes of the letter being received
+char code[8];            // dots and dashes of the letter being received
 uint8_t codeLen = 0;
 char rxWord[17];         // letters received so far (one LCD line)
 uint8_t wordLen = 0;
-bool wordShown = true; // true once the last word is on screen
+bool wordShown = true;   // true once the last word is on screen
 
 bool stablePressed = false;   // debounced button state
 bool lastRaw = false;
 unsigned long rawChangedAt = 0;
 unsigned long pressStart = 0;
 unsigned long releaseStart = 0;
+bool releasePending = false;  // released, but not yet long enough to rule out a bounce
+unsigned long pendingHeld = 0;
 
 // ----------------------------------------------------------------------
 // DISPLAY
@@ -141,23 +151,26 @@ void endWord() {
   wordShown = true;
 }
 
-void onPressStart(unsigned long now) {
+void onPressStart(unsigned long t) {
+  digitalWrite(PIN_LED, HIGH);
+  if (releasePending && t - releaseStart < BOUNCE_GAP_MS) {
+    releasePending = false;   // contact bounced: the same press carries on
+    return;
+  }
   if (wordShown) {
     // First press of a new word: clear the old one.
     wordLen = 0;
     rxWord[0] = '\0';
     wordShown = false;
   }
-  pressStart = now;
-  digitalWrite(PIN_LED, HIGH);
+  pressStart = t;
 }
 
-void onPressEnd(unsigned long now) {
+void onPressEnd(unsigned long t) {
   digitalWrite(PIN_LED, LOW);
-  unsigned long held = now - pressStart;
-  releaseStart = now;
-  if (held < MIN_PRESS_MS) return;  // glitch, ignore
-  addSymbol(held >= DASH_MIN_MS ? '-' : '.');
+  releaseStart = t;
+  pendingHeld = t - pressStart;
+  releasePending = true;      // decided once the release has lasted BOUNCE_GAP_MS
 }
 
 // ----------------------------------------------------------------------
@@ -197,8 +210,14 @@ void loop() {
     else onPressEnd(rawChangedAt);
   }
 
+  // A release that lasts past the bounce window ends the press: classify it.
+  if (!stablePressed && releasePending && now - releaseStart >= BOUNCE_GAP_MS) {
+    releasePending = false;
+    if (pendingHeld >= MIN_PRESS_MS) addSymbol(pendingHeld >= DASH_MIN_MS ? '-' : '.');
+  }
+
   // Gaps are only measured while the button is up.
-  if (!stablePressed && !wordShown) {
+  if (!stablePressed && !releasePending && !wordShown) {
     unsigned long gap = now - releaseStart;
     if (codeLen > 0 && gap >= LETTER_GAP_MS) endLetter();
     if (gap >= WORD_GAP_MS) endWord();

@@ -212,7 +212,8 @@ const uint16_t SETTLE_MS    = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point this long before doing anything there
 const bool     USE_TRAVEL   = true;          // lift before turning the base
 const float    TRAVEL_MAIN  = 0;             // main arm upright while turning
-const float    TRAVEL_ELBOW = 15;            // head slightly up while turning
+const float    TRAVEL_ELBOW = 30;            // head up while turning: keeps the pusher tip about 57 mm above
+                                             // the button while the base swings to and from Point E
 const float    LIFT_TURN_DEG = 25;           // between A and B the base turns this far towards the front and back
 
 // Gestures, each a different shape so they cannot be confused:
