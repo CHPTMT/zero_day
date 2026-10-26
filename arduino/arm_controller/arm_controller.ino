@@ -65,6 +65,8 @@ const bool RUN_TASK_2 = true;   // Point C
 const bool RUN_TASK_3 = true;   // Point D
 const bool RUN_TASK_4 = true;   // Point E
 
+const bool START_CHECKS = false;  // false: no checks at power up, the demo just runs.
+                                  // true: LEDs and beeper tested one by one during the 5 s hold
 const char DEFAULT_WORD[] = "NET";
 const unsigned long ZERO_HOLD_MS = 5000;   // hold at zero before the run
 
@@ -413,6 +415,7 @@ float baseSpeedCap = BASE_SPEED_DEG_S;   // gestures raise it while they run
 
 ColourSensor tcs;
 bool tcsOk = false;
+bool tcsStarted = false;   // the colour sensor is started when the arm reaches Point C
 char targetWord[4];
 
 enum State : uint8_t { ST_START, ST_TASK1, ST_TASK2, ST_TASK3, ST_TASK4, ST_FINISH, ST_IDLE };
@@ -1007,7 +1010,8 @@ float colourStrength(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
 }
 
 // Start up check, one colour at a time with a beep, so a wrong wire or a dead
-// LED or beeper shows straight away. Runs while the servos creep to rest.
+// LED or beeper shows straight away. Runs while the servos creep to rest
+// (only with START_CHECKS).
 void ledCheck(char c, const __FlashStringHelper *pin) {
   Serial.print(F("LED check: only ")); Serial.print(colourName(c));
   Serial.print(F(" should be lit now (")); Serial.print(pin); Serial.println(F(")."));
@@ -1301,6 +1305,10 @@ void task2() {
   lcdShow(F("Task 2: colour C"));
   lcd.print(F("Going to C"));
   goToStation(ST_C);
+  if (!tcsStarted) {   // started here, not at power up, so nothing can hold up the start of the demo
+    tcsOk = tcs.begin();
+    tcsStarted = true;
+  }
   lcdRow(1); lcd.print(F("Reading..."));
   resultColour = scanColour();
   Serial.print(F("Point C: the paper is ")); Serial.print(colourName(resultColour));
@@ -1444,28 +1452,22 @@ void setup() {
   } else {
     Serial.println(F("LCD monitor: NOT FOUND. Check SDA (A2), SCL (A3), 5 V and GND. The run carries on without it."));
   }
-  Serial.println(F("Checking the colour sensor on A4 (SDA) and A5 (SCL)..."));
-  tcsOk = tcs.begin();
-  Serial.println(tcsOk ? F("Colour sensor: connected.")
-                       : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires. Point C will light red by default."));
-
   loadWord();
 
   // The 5 s rest hold starts now. The servos creep to rest inside it (second
-  // arm, main arm, then the base, slowest of all; see SOFT_BURSTS) while the
-  // LED check lights red, green and blue in turn with a beep each, so the run
-  // starts 5 s after power up.
+  // arm, main arm, then the base, slowest of all; see SOFT_BURSTS), so the run
+  // starts 5 s after power up. With START_CHECKS the LEDs and beeper are
+  // tested one by one at the same time.
   unsigned long holdStart = millis();
   announceHold();
   writePose(ZERO_POSE);
-  ledCheck('R', F("D8"));
+  if (START_CHECKS) ledCheck('R', F("D8"));
   softAttach(sElbow, PIN_ELBOW, SOFT_BURSTS);
-  ledCheck('G', F("D9"));
+  if (START_CHECKS) ledCheck('G', F("D9"));
   softAttachPair(SOFT_BURSTS);
-  ledCheck('B', F("D10"));
+  if (START_CHECKS) ledCheck('B', F("D10"));
   softAttach(sBase, PIN_BASE, SOFT_BURSTS_BASE);
   setColourLed('-');
-  Serial.println(F("LED check done: red, green, blue, each alone with a beep."));
   writePose(ZERO_POSE);
   if (START_SWEEP) baseSweep();
   printPosition("the rest position");
