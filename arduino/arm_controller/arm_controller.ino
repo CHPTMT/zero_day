@@ -625,6 +625,7 @@ void printPosition(const char *label) {
   Serial.print(F(", second arm "));
   printJoint(cur.a[J_ELBOW], F("tilted"), F("up"), F("down"), F("level"));
   Serial.println('.');
+  if (FINE_SEARCH) return;   // the fine search sketch leaves this line out to fit in the Uno's memory
   Serial.print(F("   Sensors: "));
   printTool(F("ultrasonic"), TOOL_US);   Serial.print(F("; "));
   printTool(F("colour"), TOOL_RGB);      Serial.print(F("; "));
@@ -763,6 +764,9 @@ float pingCm() {
 
 // Median of several pings, -1 if fewer than US_MIN_ECHOES came back (one
 // stray echo is not enough to call an object).
+uint8_t usEchoes = 0;   // pings that came back in the last readDistanceCm
+float usSpread = 0;     // and how far apart they were (cm)
+
 float readDistanceCm() {
   float v[US_SAMPLES];
   uint8_t n = 0;
@@ -771,6 +775,7 @@ float readDistanceCm() {
     if (d > 0) v[n++] = d;
     delay(30);
   }
+  usEchoes = n;
   if (n < US_MIN_ECHOES) return -1;
   for (uint8_t i = 1; i < n; i++) {
     float x = v[i];
@@ -778,6 +783,7 @@ float readDistanceCm() {
     while (k >= 0 && v[k] > x) { v[k + 1] = v[k]; k--; }
     v[k + 1] = x;
   }
+  usSpread = v[n - 1] - v[0];
   return v[n / 2];
 }
 
@@ -840,28 +846,19 @@ float fineSearch(float (*measure)()) {
   moveTo(best, FINE_MOVE_MS);
   delay(SCAN_SETTLE_MS);
   Serial.print(F("Fine search: ")); Serial.print(probes);
-  Serial.print(F(" readings, best spot is base ")); Serial.print(best.a[J_BASE] - start.a[J_BASE], 1);
-  Serial.print(F(" deg and second arm ")); Serial.print(best.a[J_ELBOW] - start.a[J_ELBOW], 1);
-  Serial.println(F(" deg from where it started."));
+  Serial.print(F(" readings, best spot base ")); Serial.print(best.a[J_BASE] - start.a[J_BASE], 1);
+  Serial.print(F(", second arm ")); Serial.print(best.a[J_ELBOW] - start.a[J_ELBOW], 1);
+  Serial.println(F(" deg."));
   return bestScore;
 }
 
-// Ultrasonic score for the fine search: how many of the pings land in the
-// window, minus how much they spread (cm). The steadiest echo scores highest.
+// Ultrasonic score for the fine search: how many pings came back, minus how
+// much they spread (cm). The steadiest echo in the window scores highest.
 float usLo, usHi, fineDist;
 float usScore() {
-  float v[US_SAMPLES];
-  uint8_t n = 0;
-  for (uint8_t i = 0; i < US_SAMPLES; i++) {
-    float d = pingCm();
-    if (inWindow(d, usLo, usHi)) v[n++] = d;
-    delay(30);
-  }
-  if (n == 0) { fineDist = -1; return 0; }
-  float lo = v[0], hi = v[0], sum = 0;
-  for (uint8_t i = 0; i < n; i++) { lo = min(lo, v[i]); hi = max(hi, v[i]); sum += v[i]; }
-  fineDist = n >= US_MIN_ECHOES ? sum / n : -1;
-  return n * 10 - min(hi - lo, 9.9f);
+  fineDist = readDistanceCm();
+  if (!inWindow(fineDist, usLo, usHi)) return 0;
+  return usEchoes * 10 - min(usSpread, 9.9f);
 }
 
 // Refines a distance found by scanForObject. Starts where the object was seen
@@ -875,9 +872,8 @@ float fineDistance(float d, float lo, float hi) {
   fineSearch(usScore);
   usScore();   // reading at the best spot
   moveTo(home, FINE_MOVE_MS);
-  if (fineDist < 0) return d;
-  Serial.print(F("Fine search distance: ")); Serial.print(fineDist, 1);
-  Serial.print(F(" cm (first reading ")); Serial.print(d, 1); Serial.println(F(" cm)."));
+  if (!inWindow(fineDist, lo, hi)) return d;
+  Serial.print(F("Fine search distance: ")); Serial.print(fineDist, 1); Serial.println(F(" cm."));
   return fineDist;
 }
 
