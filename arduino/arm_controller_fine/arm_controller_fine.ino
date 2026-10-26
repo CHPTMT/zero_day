@@ -361,6 +361,9 @@ class ColourSensor {
  public:
   bool begin() {
     Wire.begin();
+#if defined(WIRE_HAS_TIMEOUT)
+    Wire.setWireTimeout(25000, true);                // a stuck I2C line gives up after 25 ms instead of freezing
+#endif
     uint8_t id = read8(0x12);                        // ID register
     if (id != 0x44 && id != 0x4D && id != 0x10) return false;   // TCS34725, TCS34727 and clones
     write8(0x01, ATIME);                             // integration time 50 ms
@@ -1450,6 +1453,7 @@ void setup() {
   } else {
     Serial.println(F("LCD monitor: NOT FOUND. Check SDA (A2), SCL (A3), 5 V and GND. The run carries on without it."));
   }
+  Serial.println(F("Checking the colour sensor on A4 (SDA) and A5 (SCL)..."));
   tcsOk = tcs.begin();
   Serial.println(tcsOk ? F("Colour sensor: connected.")
                        : F("Colour sensor: NOT FOUND. Check its SDA (A4) and SCL (A5) wires. Point C will light red by default."));

@@ -218,6 +218,9 @@ class ColourSensor {
  public:
   bool begin() {
     Wire.begin();
+#if defined(WIRE_HAS_TIMEOUT)
+    Wire.setWireTimeout(25000, true);                // a stuck I2C line gives up after 25 ms instead of freezing
+#endif
     uint8_t id = read8(0x12);                        // ID register
     if (id != 0x44 && id != 0x4D && id != 0x10) return false;   // TCS34725, TCS34727 and clones
     write8(0x01, ATIME);                             // integration time 50 ms
@@ -842,6 +845,7 @@ void setup() {
   writePose(ZERO_POSE);
 
   Serial.println(F("\nGroup 21 robotic arm, demonstration"));
+  Serial.println(F("[init] checking the colour sensor on A4/A5"));
   tcsOk = tcs.begin();
   Serial.println(tcsOk ? F("[init] colour sensor found") : F("[init] colour sensor NOT found, Task 2 will default"));
 
