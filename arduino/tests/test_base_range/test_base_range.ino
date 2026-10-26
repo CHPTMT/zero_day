@@ -111,8 +111,9 @@ void setup() {
   Serial.begin(115200);
   Serial.println(F("\nBase range test (D2). Creeping to the middle..."));
   base.writeMicroseconds(CENTRE_US);
-  for (uint8_t i = 0; i < 30; i++) { base.attach(PIN_BASE); delay(22); base.detach(); delay(110); }   // soft start
-  base.attach(PIN_BASE);
+  // Wide limits: by default the Servo library will not send pulses outside 544 to 2400 us.
+  for (uint8_t i = 0; i < 30; i++) { base.attach(PIN_BASE, MIN_US, MAX_US); delay(22); base.detach(); delay(110); }   // soft start
+  base.attach(PIN_BASE, MIN_US, MAX_US);
   base.writeMicroseconds(CENTRE_US);
   delay(1000);
   Serial.println(F("In the middle now. Make sure nothing (cables, stands) blocks the swing."));

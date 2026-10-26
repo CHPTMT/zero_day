@@ -15,6 +15,13 @@
  *   4. Nudge with + and - until it faces exactly forward, then type z and
  *      paste the line it prints into every sketch.
  *
+ * Checking the base turns as far as it is told (BASE_GAIN):
+ *   5. Type a: the base turns 80 degrees left, to where A and B should be.
+ *   6. If it stops short of (or past) A and B, nudge with + and - until the
+ *      arm points straight at them, then type k.
+ *   7. Do the same with e (80 right, Point E) and k again.
+ *   8. Paste the BASE_GAIN line it prints into every sketch.
+ *
  * Commands (Serial Monitor, 115200 baud, line ending "New Line"):
  *   c        go to the middle and hold
  *   l  r     go slowly to the far left / far right (85 degrees)
@@ -22,6 +29,7 @@
  *   s        sweep: far left, far right, then the middle
  *   + -      nudge 1 degree left / right      ++ --  nudge 5 degrees
  *   z        make the current position the middle and print SERVO_ZERO_BASE
+ *   k        the arm now points at A/B (after a) or E (after e): work out BASE_GAIN
  *   f        free: let go of the servo so the turntable turns by hand
  *   h        hold again where it is told to be
  *   p        print where it is
@@ -36,30 +44,35 @@ const float BASE_SPEED_DEG_S = 18;
 const float SWEEP_DEG    = 85;
 const float STATION_DEG  = 80;
 const uint8_t STEP_MS    = 20;
+const int BASE_US_MIN    = 500;    // SG92R full travel, same as arm_controller.ino
+const int BASE_US_MAX    = 2500;
 
 Servo base;
 float rel = 0;          // relative angle: 0 = middle, + = left, - = right
 bool attached = false;
+float gainSum = 0;      // BASE_GAIN measurements so far
+uint8_t gainCount = 0;
 
+// Same scale as arm_controller, without the gain (this sketch measures it).
 int pulseFor(float deg) {
-  deg = constrain(deg, 0.0, 180.0);
-  return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+  int us = (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
+  return constrain(us, BASE_US_MIN, BASE_US_MAX);
 }
 
 void writeBase(float r) {
-  rel = constrain(r, -90.0, 90.0);
+  rel = constrain(r, -100.0, 100.0);
   base.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
 }
 
 // Creep to the angle already written, in short bursts, instead of jumping.
 void softAttach() {
   for (uint8_t i = 0; i < 30; i++) {
-    base.attach(PIN_BASE);
+    base.attach(PIN_BASE, BASE_US_MIN, BASE_US_MAX);
     delay(22);
     base.detach();
     delay(110);
   }
-  base.attach(PIN_BASE);
+  base.attach(PIN_BASE, BASE_US_MIN, BASE_US_MAX);
   attached = true;
 }
 
@@ -85,7 +98,7 @@ void printWhere() {
 
 void help() {
   Serial.println(F("Commands: c middle, l / r far left / right, a / e A-B side / E side, s sweep,"));
-  Serial.println(F("          + - nudge 1 deg, ++ -- nudge 5 deg, z set this as the middle, f free, h hold, p where."));
+  Serial.println(F("          + - nudge 1 deg, ++ -- nudge 5 deg, z set this as the middle, k work out BASE_GAIN, f free, h hold, p where."));
 }
 
 void setup() {
@@ -110,8 +123,8 @@ void loop() {
   if      (!strcmp(buf, "c"))  { Serial.println(F("Going to the middle.")); glide(0); }
   else if (!strcmp(buf, "l"))  { Serial.println(F("Going to the far left.")); glide(SWEEP_DEG); }
   else if (!strcmp(buf, "r"))  { Serial.println(F("Going to the far right.")); glide(-SWEEP_DEG); }
-  else if (!strcmp(buf, "a"))  { Serial.println(F("Going to the A and B side (80 left).")); glide(STATION_DEG); }
-  else if (!strcmp(buf, "e"))  { Serial.println(F("Going to the E side (80 right).")); glide(-STATION_DEG); }
+  else if (!strcmp(buf, "a"))  { Serial.println(F("Going to the A and B side (80 left). Nudge onto A and B, then type k.")); glide(STATION_DEG); }
+  else if (!strcmp(buf, "e"))  { Serial.println(F("Going to the E side (80 right). Nudge onto E, then type k.")); glide(-STATION_DEG); }
   else if (!strcmp(buf, "s"))  {
     Serial.println(F("Sweep: far left, far right, then the middle."));
     glide(SWEEP_DEG); delay(500); glide(-SWEEP_DEG); delay(500); glide(0);
@@ -126,6 +139,16 @@ void loop() {
     writeBase(0);
     Serial.println(F("This is now the middle. Paste this line into arm_controller.ino and the other sketches:"));
     Serial.print(F("const int SERVO_ZERO_BASE  = ")); Serial.print(SERVO_ZERO_BASE); Serial.println(';');
+  }
+  else if (!strcmp(buf, "k"))  {
+    if (fabs(rel) < 40) { Serial.println(F("Type a or e first, nudge the arm onto A/B or E, then k.")); return; }
+    gainSum += fabs(rel) / STATION_DEG;
+    gainCount++;
+    Serial.print(F("To point at ")); Serial.print(rel > 0 ? F("A and B") : F("E"));
+    Serial.print(F(" the base needed ")); Serial.print(fabs(rel), 0); Serial.println(F(" degrees instead of 80."));
+    Serial.print(F("Paste this line into arm_controller.ino and the other sketches (average of ")); Serial.print(gainCount);
+    Serial.println(F(" reading(s)):"));
+    Serial.print(F("const float BASE_GAIN   = ")); Serial.print(gainSum / gainCount, 2); Serial.println(';');
   }
   else if (!strcmp(buf, "f"))  { base.detach(); attached = false; Serial.println(F("Servo free: the turntable can be turned by hand. Type h to hold again.")); }
   else if (!strcmp(buf, "h"))  { if (!attached) { writeBase(rel); softAttach(); } Serial.println(F("Holding.")); }

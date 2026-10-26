@@ -100,6 +100,15 @@ const int SERVO_ZERO_LEFT  = 90;
 const int SERVO_ZERO_RIGHT = 90;
 const int SERVO_ZERO_ELBOW = 90;
 
+// Base servo (SG92R). BASE_GAIN corrects a base that turns less (or more)
+// than it is told: if it stops short of A and B or E, run tests/test_base,
+// nudge it onto the point and paste the BASE_GAIN line it prints (1.0 = no
+// correction). The SG92R's full travel needs pulses of about 500 to 2500 us,
+// a little wider than the 544 to 2400 us the Servo library uses by default.
+const float BASE_GAIN   = 1.0;
+const int   BASE_US_MIN = 500;
+const int   BASE_US_MAX = 2500;
+
 // Rest position (every servo at 90): base facing straight forward, main arm
 // upright, second arm level and pointing straight out from the main arm.
 
@@ -450,6 +459,12 @@ int pulseFor(float deg) {
   return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
 }
 
+// Base pulse: same scale, with the gain, and the SG92R's wider pulse range.
+int basePulse(float rel) {
+  int us = (int)(544 + (SERVO_ZERO_BASE + BASE_DIR * rel * BASE_GAIN) * (2400 - 544) / 180.0 + 0.5);
+  return constrain(us, BASE_US_MIN, BASE_US_MAX);
+}
+
 // Set one joint to a relative angle. The main arm writes both servos in
 // opposite directions so they twist the shaft together.
 void writeJoint(uint8_t j, float rel) {
@@ -457,7 +472,7 @@ void writeJoint(uint8_t j, float rel) {
   cur.a[j] = rel;
   switch (j) {
     case J_BASE:
-      sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
+      sBase.writeMicroseconds(basePulse(rel));
       break;
     case J_MAIN:
       sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + MAIN_DIR * rel));
@@ -506,12 +521,12 @@ void moveJoint(uint8_t j, float rel, uint16_t ms) {
 // Creep a servo to the value already written to it (see SOFT_BURSTS).
 void softAttach(Servo &s, uint8_t pin, uint8_t bursts) {
   for (uint8_t i = 0; i < bursts; i++) {
-    s.attach(pin);
+    s.attach(pin, BASE_US_MIN, BASE_US_MAX);
     delay(SOFT_ON_MS);
     s.detach();
     delay(SOFT_OFF_MS);
   }
-  s.attach(pin);
+  s.attach(pin, BASE_US_MIN, BASE_US_MAX);
 }
 
 // The two main arm servos together, so they never fight each other.

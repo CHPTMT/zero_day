@@ -37,6 +37,8 @@ const int SERVO_ZERO_BASE  = 90;
 const int SERVO_ZERO_LEFT  = 90;
 const int SERVO_ZERO_RIGHT = 90;
 const int SERVO_ZERO_ELBOW = 90;
+const float BASE_GAIN   = 1.0;    // same as arm_controller.ino (from tests/test_base)
+const int   BASE_US_MIN = 500, BASE_US_MAX = 2500;   // SG92R full travel
 const int8_t BASE_DIR = 1, MAIN_DIR = -1, ELBOW_DIR = 1;   // MAIN_DIR -1: same as arm_controller
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
@@ -60,11 +62,17 @@ int pulseFor(float deg) {
   return (int)(544 + deg * (2400 - 544) / 180.0 + 0.5);
 }
 
+// Base pulse: same scale, with the gain, and the SG92R's wider pulse range.
+int basePulse(float rel) {
+  int us = (int)(544 + (SERVO_ZERO_BASE + BASE_DIR * rel * BASE_GAIN) * (2400 - 544) / 180.0 + 0.5);
+  return constrain(us, BASE_US_MIN, BASE_US_MAX);
+}
+
 void writeJoint(uint8_t j, float rel) {
   rel = constrain(rel, REL_MIN[j], REL_MAX[j]);
   cur[j] = rel;
   if (j == J_BASE) {
-    sBase.writeMicroseconds(pulseFor(SERVO_ZERO_BASE + BASE_DIR * rel));
+    sBase.writeMicroseconds(basePulse(rel));
   } else if (j == J_MAIN) {
     sLeft.writeMicroseconds(pulseFor(SERVO_ZERO_LEFT + offLeft + MAIN_DIR * rel));
     sRight.writeMicroseconds(pulseFor(SERVO_ZERO_RIGHT + offRight - MAIN_DIR * rel));
@@ -95,7 +103,7 @@ void printAngles() {
 // The SERVO_ZERO values that make the current position the new rest position.
 void printZeros() {
   Serial.println(F("\nPaste these over the SERVO_ZERO lines in arm_controller.ino (and the test sketches):"));
-  Serial.print(F("const int SERVO_ZERO_BASE  = ")); Serial.print(rawClamp(SERVO_ZERO_BASE + BASE_DIR * cur[J_BASE])); Serial.println(';');
+  Serial.print(F("const int SERVO_ZERO_BASE  = ")); Serial.print(rawClamp(SERVO_ZERO_BASE + BASE_DIR * cur[J_BASE] * BASE_GAIN)); Serial.println(';');
   Serial.print(F("const int SERVO_ZERO_LEFT  = ")); Serial.print(rawClamp(SERVO_ZERO_LEFT + offLeft + MAIN_DIR * cur[J_MAIN])); Serial.println(';');
   Serial.print(F("const int SERVO_ZERO_RIGHT = ")); Serial.print(rawClamp(SERVO_ZERO_RIGHT + offRight - MAIN_DIR * cur[J_MAIN])); Serial.println(';');
   Serial.print(F("const int SERVO_ZERO_ELBOW = ")); Serial.print(rawClamp(SERVO_ZERO_ELBOW + ELBOW_DIR * cur[J_ELBOW])); Serial.println(';');
@@ -172,8 +180,8 @@ void handle(String cmd) {
 // Soft start: short bursts of pulses with pauses, so each servo creeps to rest
 // instead of jumping there (same as arm_controller.ino). Base last and slowest.
 void softAttach(Servo &s, uint8_t pin, uint8_t bursts) {
-  for (uint8_t i = 0; i < bursts; i++) { s.attach(pin); delay(22); s.detach(); delay(110); }
-  s.attach(pin);
+  for (uint8_t i = 0; i < bursts; i++) { s.attach(pin, BASE_US_MIN, BASE_US_MAX); delay(22); s.detach(); delay(110); }
+  s.attach(pin, BASE_US_MIN, BASE_US_MAX);
 }
 void softAttachAll() {
   softAttach(sElbow, PIN_ELBOW, 15);
