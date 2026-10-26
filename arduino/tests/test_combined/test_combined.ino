@@ -74,8 +74,9 @@ Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0
 Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
 Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};
-const float PRESS_TRAVEL_MM   = 36;   // the pusher tip waits this far above the button (more puts the second arm past +45)
-const float PRESS_DEPTH_MM    = 12;   // and pushes this far down past contact
+const float PRESS_TRAVEL_MM   = 38;   // the pusher tip waits this far above the button (40 puts the second arm at +45)
+const float PRESS_DEPTH_MM    = 20;   // and pushes this far down past contact
+const float PRESS_MAIN_EXTRA_DEG = 3; // main arm leans this much further at the bottom, so its servos push too
 
 const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
@@ -442,6 +443,7 @@ void runAll() {
 
   Pose hover, press;
   if (stationPose(buttonPoint(-PRESS_DEPTH_MM), press) && stationPose(buttonPoint(PRESS_TRAVEL_MM), hover)) {
+    press.a[J_MAIN] = constrain(press.a[J_MAIN] + PRESS_MAIN_EXTRA_DEG, REL_MIN[J_MAIN], REL_MAX[J_MAIN]);
     goToPose(hover, "Point E (above the button)");
     Serial.println(F("Each press pushes the pusher tip straight down onto the button and back up."));
     // Same timing as pressFor() in arm_controller.ino

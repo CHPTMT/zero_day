@@ -113,6 +113,16 @@ const uint8_t  SOFT_BURSTS_BASE  = 30;    // bursts for the base
 const uint8_t  SOFT_ON_MS        = 22;    // one servo frame of pulses per burst
 const uint8_t  SOFT_OFF_MS       = 110;   // rest between bursts
 
+// Start up base sweep. After the soft start the base turns slowly to its
+// far left, then its far right, then settles in the middle of the two. The
+// servo has no position feedback, so this does not measure anything: the
+// middle is the halfway point of the two ends it was sent to. It shows the
+// whole swing is clear (cables, stands), beds the base gear in its groove,
+// and makes a wrong SERVO_ZERO_BASE obvious: if the arm does not face
+// straight forward after the sweep, change SERVO_ZERO_BASE.
+const bool     START_SWEEP     = true;
+const float    START_SWEEP_DEG = 85;    // each way from the middle (the servo end stops are at 90)
+
 // Direction of each joint. Flip to -1 if the joint moves the wrong way.
 // MAIN_DIR = 1 means: forward = left servo value goes up, right servo goes down.
 const int8_t BASE_DIR  = 1;
@@ -208,6 +218,9 @@ const uint16_t MOVE_MS      = 1200;
 const uint16_t BASE_TURN_MS = 1500;
 const uint8_t  STEP_MS      = 20;    // one servo update per 20 ms servo frame
 const float    MAX_SPEED_DEG_S = 30;  // top joint speed. Lower it for slower, gentler moves
+const float    BASE_SPEED_DEG_S = 18; // the base is held slower than the other joints, so a long
+                                      // swing (A to E is 160 degrees) never yanks the base gear
+const float    GESTURE_BASE_SPEED_DEG_S = 24;   // base speed limit while shaking NO or drawing BOX
 const uint16_t SETTLE_MS    = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point this long before doing anything there
 const bool     USE_TRAVEL   = true;          // lift before turning the base
@@ -230,12 +243,20 @@ const float    GESTURE_SPEED_DEG_S = 36;   // gestures run 20% faster than ordin
 
 // Point E press. Each press drives the pusher tip straight down, from
 // PRESS_TRAVEL_MM above the button to PRESS_DEPTH_MM into it, and straight
-// back up, fast and firm. The main arm and second arm move together to keep
-// it vertical. Pushing 12 mm past contact makes the servos press hard on the
-// button for the whole hold.
+// back up, fast and firm: a 58 mm stroke. The main arm and second arm move
+// together to keep it vertical. Aiming 20 mm past contact keeps the servos
+// pushing hard for the whole hold, and still presses if the button sits up
+// to about 19 mm lower than expected.
 const float    PRESS_SPEED_DEG_S  = 120;
-const float PRESS_TRAVEL_MM   = 36;   // the pusher tip waits this far above the button (more puts the second arm past +45)
-const float PRESS_DEPTH_MM    = 12;   // and pushes this far down past contact
+const float PRESS_TRAVEL_MM   = 38;   // the pusher tip waits this far above the button (40 puts the second arm at its +45 limit)
+const float PRESS_DEPTH_MM    = 20;   // and pushes this far down past contact
+// Extra lean. With two joints and a fixed button the main arm angle at the
+// press is set by the geometry, and a straight down press is almost all
+// second arm (one servo). Leaning the main arm this much further forward at
+// the bottom of each press makes its two servos push on the button too. It
+// also nudges the tip a few mm away from the base; set 0 if the pusher slides
+// off the button cap.
+const float PRESS_MAIN_EXTRA_DEG = 3;
 
 // Beeper
 const bool     BUZZER_PASSIVE  = true;  // passive buzzer (needs a tone). Set false for an active buzzer
@@ -261,18 +282,32 @@ const float    US_B_MIN_CM      = 2.0;
 const float    US_B_MAX_CM      = 25.0;
 const float    SCAN_BASE_DEG    = 6;
 const float    SCAN_ELBOW_DEG   = 5;
-const uint8_t  US_SAMPLES       = 5;
-const uint8_t  US_MIN_ECHOES    = 3;         // at least this many of the 5 pings must come back
+const uint8_t  US_SAMPLES       = 7;
+const uint8_t  US_MIN_ECHOES    = 4;         // at least this many of the 7 pings must come back
 const unsigned long US_TIMEOUT_US = 25000;
 
 const float REF_RED[3]   = {0.58, 0.23, 0.19};   // calibrate with test_sensors
 const float REF_GREEN[3] = {0.28, 0.44, 0.28};
 const float REF_BLUE[3]  = {0.20, 0.32, 0.48};
 const uint16_t COLOUR_MIN_CLEAR = 30;
-const uint8_t  COLOUR_SAMPLES   = 3;
+const uint8_t  COLOUR_SAMPLES   = 5;
 const float    COLOUR_WAVE_BASE_DEG  = 5;   // at C the sensor waves this far left and right
 const float    COLOUR_WAVE_ELBOW_DEG = 4;   // and this far up and down, to cover more of the small target
 const uint16_t LED_CHECK_MS     = 1000;   // each colour shown alone at start up
+const uint16_t SCAN_SETTLE_MS   = 250;    // still time after each small scan move before reading
+
+// Fine search (the arm_controller_fine sketch sets FINE_SEARCH to true).
+// After finding an object at A or B, or the clearest spot at C, the arm makes
+// very small moves left, right, up and down, keeps whichever reads best and
+// repeats, halving the step when nothing helps. It never strays more than
+// FINE_MAX_DEG from where it started. Not used at D (a tap happens once, and
+// moving servos would be heard) or E (the button gives the arm no feedback).
+const bool     FINE_SEARCH       = false;
+const float    FINE_STEP_DEG     = 2;     // first step size
+const float    FINE_MIN_STEP_DEG = 0.5;   // stops once the step would be smaller than this
+const float    FINE_MAX_DEG      = 6;     // furthest it may move from the starting spot
+const uint8_t  FINE_MAX_PROBES   = 24;    // at most this many readings per point
+const uint16_t FINE_MOVE_MS      = 300;
 
 const uint16_t SOUND_TRIGGER   = 40;
 const uint16_t SOUND_AMP_MIN   = 40;
@@ -282,15 +317,14 @@ const unsigned long SOUND_TIMEOUT_MS = 3000;
 const uint16_t SOUND_HOLD_MS   = 3000;   // time spent pointing at the indicator at the end
 const float    SOUND_RISE_DEG_S = 15;     // the arm rises up the scale slowly, like a level meter
 
-// Morse timing, two times slower than before to go easy on the arm. A dot is
-// 1 unit, a dash 3, the gap inside a letter 1 and between letters 3. The
-// receivers split dots from dashes at 1100 ms and end a letter after 1300 ms
-// of silence, halfway between what the button actually sees.
+// Morse timing. A dot is 1 unit, a dash 3, the gap inside a letter 1 and
+// between letters 3. The receivers split dots from dashes at 1250 ms and end
+// a letter after 1200 ms of silence, halfway between what the button sees.
 const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
 const uint16_t PRESS_MOVE_MS  = 200;   // shortest move onto and off the button
 const int16_t  PRESS_EXTRA_MS = 0;
-// The button only closes in the last 12 mm of the 48 mm push, about 75% of the
-// way through each eased move. The press the receiver sees is the hold plus
+// The button only closes in the last part of each push (20 mm of 58), late in
+// each eased move. The press the receiver sees is the hold plus
 // the end of the move down and the start of the move up; the gap is the pause
 // plus the rest of both moves. Holds and pauses are cut by those amounts.
 const float    PRESS_CLOSE_AT = 0.75;
@@ -302,6 +336,7 @@ Servo sBase, sLeft, sRight, sElbow;
 struct Pose { float a[NJ]; };
 Pose cur = {{0, 0, 0}};
 const Pose ZERO_POSE = {{0, 0, 0}};
+float baseSpeedCap = BASE_SPEED_DEG_S;   // gestures raise it while they run
 
 Adafruit_TCS34725 tcs(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
 bool tcsOk = false;
@@ -441,11 +476,14 @@ void writePose(const Pose &p) {
 unsigned long moveAtSpeed(const Pose &target, uint16_t ms, float topSpeed) {
   Pose start = cur;
   // ms is the shortest time allowed. Long moves take longer, so that no joint
-  // ever goes faster than topSpeed (cosine easing peaks at pi/2 times the
-  // average speed, hence the 1.571).
-  float far = 0;
-  for (uint8_t j = 0; j < NJ; j++) far = max(far, fabs(target.a[j] - start.a[j]));
-  unsigned long dur = max((unsigned long)ms, (unsigned long)(far * 1571.0 / topSpeed));
+  // ever goes faster than topSpeed, and the base no faster than baseSpeedCap
+  // (cosine easing peaks at pi/2 times the average speed, hence the 1.571).
+  float longest = 0;   // ms the slowest joint needs
+  for (uint8_t j = 0; j < NJ; j++) {
+    float speed = (j == J_BASE) ? min(topSpeed, baseSpeedCap) : topSpeed;
+    longest = max(longest, fabs(target.a[j] - start.a[j]) * 1571.0 / speed);
+  }
+  unsigned long dur = max((unsigned long)ms, (unsigned long)longest);
   uint16_t steps = max(1UL, dur / STEP_MS);
   for (uint16_t s = 1; s <= steps; s++) {
     float e = 0.5 - 0.5 * cos(PI * s / steps);
@@ -679,7 +717,9 @@ float baseCentre() {
 
 // Move to a gesture pose and stop briefly, so each end of the shape is clear.
 void gestureStep(const Pose &p, uint16_t ms) {
+  baseSpeedCap = GESTURE_BASE_SPEED_DEG_S;
   moveAtSpeed(p, ms, GESTURE_SPEED_DEG_S);
+  baseSpeedCap = BASE_SPEED_DEG_S;
   delay(GESTURE_PAUSE_MS);
 }
 
@@ -770,9 +810,12 @@ float readDistanceCm() {
 
 bool inWindow(float d, float lo, float hi) { return d >= lo && d <= hi; }
 
+Pose scanHit;   // where scanForObject saw the object
+
 // Distance straight ahead; if nothing is in the window, look a little left,
 // right, up and down and take the first reading that is. Ends where it began.
 float scanForObject(float lo, float hi) {
+  scanHit = cur;
   float d = readDistanceCm();
   if (inWindow(d, lo, hi)) return d;
   Pose home = cur;
@@ -783,13 +826,86 @@ float scanForObject(float lo, float hi) {
     p.a[J_BASE] += look[i][0];
     p.a[J_ELBOW] += look[i][1];
     moveTo(p, 500);
-    delay(150);
+    delay(SCAN_SETTLE_MS);
     float e = readDistanceCm();
-    if (inWindow(e, lo, hi)) { d = e; break; }
+    if (inWindow(e, lo, hi)) { d = e; scanHit = p; break; }
     if (d < 0 || (e > 0 && e < d)) d = e;   // keep the nearest echo for the report
   }
   moveTo(home, 500);
   return d;
+}
+
+// ======================================================================
+// FINE SEARCH
+// ======================================================================
+// Hill climb around the current pose (see FINE_SEARCH): a very small step
+// left, right, up and down, move on to whichever scores best, repeat; when no
+// step helps, halve it. Leaves the arm at the best spot and returns its score.
+float fineSearch(float (*measure)()) {
+  Pose start = cur, best = cur;
+  float bestScore = measure();
+  float step = FINE_STEP_DEG;
+  uint8_t probes = 0;
+  const int8_t dir[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};   // {base, second arm}
+  while (step >= FINE_MIN_STEP_DEG && probes < FINE_MAX_PROBES) {
+    Pose next = best;
+    float nextScore = bestScore;
+    for (uint8_t i = 0; i < 4; i++) {
+      Pose p = best;
+      p.a[J_BASE]  += dir[i][0] * step;
+      p.a[J_ELBOW] += dir[i][1] * step;
+      if (fabs(p.a[J_BASE] - start.a[J_BASE]) > FINE_MAX_DEG || fabs(p.a[J_ELBOW] - start.a[J_ELBOW]) > FINE_MAX_DEG) continue;
+      moveTo(p, FINE_MOVE_MS);
+      delay(SCAN_SETTLE_MS);
+      float sc = measure();
+      probes++;
+      if (sc > nextScore) { nextScore = sc; next = p; }
+    }
+    if (nextScore > bestScore) { best = next; bestScore = nextScore; }
+    else step /= 2;
+  }
+  moveTo(best, FINE_MOVE_MS);
+  delay(SCAN_SETTLE_MS);
+  Serial.print(F("Fine search: ")); Serial.print(probes);
+  Serial.print(F(" readings, best spot is base ")); Serial.print(best.a[J_BASE] - start.a[J_BASE], 1);
+  Serial.print(F(" deg and second arm ")); Serial.print(best.a[J_ELBOW] - start.a[J_ELBOW], 1);
+  Serial.println(F(" deg from where it started."));
+  return bestScore;
+}
+
+// Ultrasonic score for the fine search: how many of the pings land in the
+// window, minus how much they spread (cm). The steadiest echo scores highest.
+float usLo, usHi, fineDist;
+float usScore() {
+  float v[US_SAMPLES];
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < US_SAMPLES; i++) {
+    float d = pingCm();
+    if (inWindow(d, usLo, usHi)) v[n++] = d;
+    delay(30);
+  }
+  if (n == 0) { fineDist = -1; return 0; }
+  float lo = v[0], hi = v[0], sum = 0;
+  for (uint8_t i = 0; i < n; i++) { lo = min(lo, v[i]); hi = max(hi, v[i]); sum += v[i]; }
+  fineDist = n >= US_MIN_ECHOES ? sum / n : -1;
+  return n * 10 - min(hi - lo, 9.9f);
+}
+
+// Refines a distance found by scanForObject. Starts where the object was seen
+// and returns to the station pose afterwards, ready for the gesture.
+float fineDistance(float d, float lo, float hi) {
+  if (!inWindow(d, lo, hi)) return d;
+  Pose home = cur;
+  Serial.println(F("Fine search: very small moves left, right, up and down to find the steadiest echo."));
+  moveTo(scanHit, FINE_MOVE_MS);
+  usLo = lo; usHi = hi;
+  fineSearch(usScore);
+  usScore();   // reading at the best spot
+  moveTo(home, FINE_MOVE_MS);
+  if (fineDist < 0) return d;
+  Serial.print(F("Fine search distance: ")); Serial.print(fineDist, 1);
+  Serial.print(F(" cm (first reading ")); Serial.print(d, 1); Serial.println(F(" cm)."));
+  return fineDist;
 }
 
 // ======================================================================
@@ -857,6 +973,13 @@ float colourStrength(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   return hi - mid;
 }
 
+// Colour score for the fine search.
+float colourScore() {
+  uint32_t r, g, b, c;
+  readRaw(r, g, b, c);
+  return colourStrength(r, g, b, c);
+}
+
 // Start up check: red, green and blue LEDs one at a time, one second each,
 // with a beep, so a wrong wire or a dead LED or beeper shows straight away.
 void ledCheck() {
@@ -884,17 +1007,26 @@ char scanColour() {
                             {0, COLOUR_WAVE_ELBOW_DEG}, {0, -COLOUR_WAVE_ELBOW_DEG}};
   uint32_t r = 0, g = 0, b = 0, c = 0;
   float best = -2;
+  Pose bestPose = home;
   for (uint8_t i = 0; i < 5; i++) {
     Pose p = home;
     p.a[J_BASE] += wave[i][0];
     p.a[J_ELBOW] += wave[i][1];
     moveTo(p, 400);
-    delay(100);
+    delay(SCAN_SETTLE_MS);
     uint32_t rr, gg, bb, cc;
     readRaw(rr, gg, bb, cc);
     setColourLed(classifyColour(rr, gg, bb, cc));
     float s = colourStrength(rr, gg, bb, cc);
-    if (s > best) { best = s; r = rr; g = gg; b = bb; c = cc; }
+    if (s > best) { best = s; r = rr; g = gg; b = bb; c = cc; bestPose = p; }
+  }
+  if (FINE_SEARCH) {
+    Serial.println(F("Fine search: very small moves around the clearest spot to make the colour stand out most."));
+    moveTo(bestPose, FINE_MOVE_MS);
+    if (fineSearch(colourScore) > best) {
+      readRaw(r, g, b, c);
+      setColourLed(classifyColour(r, g, b, c));
+    }
   }
   moveTo(home, 400);
   float sum = r + g + b;
@@ -1114,6 +1246,7 @@ void task1() {
   lcd.print(F("Going to A"));
   goToStation(ST_A);
   distA = scanForObject(US_A_MIN_CM, US_A_MAX_CM);
+  if (FINE_SEARCH) distA = fineDistance(distA, US_A_MIN_CM, US_A_MAX_CM);
   resultA = inWindow(distA, US_A_MIN_CM, US_A_MAX_CM);
   printDistance(F("Point A"), distA, resultA, US_A_MIN_CM, US_A_MAX_CM);
   lcdRow(1);
@@ -1125,6 +1258,7 @@ void task1() {
   lcdRow(0); lcd.print(F("Going to B"));
   goToStation(ST_B);
   distB = scanForObject(US_B_MIN_CM, US_B_MAX_CM);
+  if (FINE_SEARCH) distB = fineDistance(distB, US_B_MIN_CM, US_B_MAX_CM);
   resultB = inWindow(distB, US_B_MIN_CM, US_B_MAX_CM);
   printDistance(F("Point B"), distB, resultB, US_B_MIN_CM, US_B_MAX_CM);
   lcdDist(8, 1, 'B', distB);
@@ -1204,6 +1338,7 @@ void task4() {
     Serial.println(F("Point E is out of reach. Skipping the Morse task."));
     return;
   }
+  pressPose.a[J_MAIN] = constrain(pressPose.a[J_MAIN] + PRESS_MAIN_EXTRA_DEG, REL_MIN[J_MAIN], REL_MAX[J_MAIN]);
   goToPose(hoverPose, "Point E (above the button)");
   Serial.print(F("Each press pushes the pusher tip ")); Serial.print(PRESS_TRAVEL_MM + PRESS_DEPTH_MM, 0);
   Serial.print(F(" mm straight down, ending ")); Serial.print(PRESS_DEPTH_MM, 0); Serial.println(F(" mm into the button."));
@@ -1243,6 +1378,22 @@ void printSummary() {
 // ======================================================================
 // SETUP AND LOOP
 // ======================================================================
+// Slow sweep of the base to its far left and far right, then the middle (see START_SWEEP).
+void baseSweep() {
+  Serial.println(F("Base sweep: head up, then turning slowly to the far left, the far right and the middle."));
+  Pose up = {{0, TRAVEL_MAIN, TRAVEL_ELBOW}};   // head lifted clear of the stands
+  moveTo(up, MOVE_MS);
+  delay(500);
+  moveJoint(J_BASE, START_SWEEP_DEG, BASE_TURN_MS);
+  delay(500);
+  moveJoint(J_BASE, -START_SWEEP_DEG, BASE_TURN_MS);
+  delay(500);
+  moveJoint(J_BASE, 0, BASE_TURN_MS);
+  moveTo(ZERO_POSE, MOVE_MS);
+  delay(SETTLE_MS);
+  Serial.println(F("Base sweep done. The base is now in the middle of its two ends. If it is not facing straight forward, change SERVO_ZERO_BASE."));
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(PIN_US_TRIG, OUTPUT);
@@ -1254,7 +1405,7 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   setColourLed('-');
 
-  Serial.println(F("\nMoving gently to the rest position (about 8 seconds)."));
+  Serial.println(F("\nMoving gently to the rest position (about 8 seconds), then sweeping the base (about 30 seconds)."));
   // Write zero first, then let each servo creep to it: second arm, main arm,
   // then the base, slowest of all (see SOFT_BURSTS).
   writePose(ZERO_POSE);
@@ -1262,6 +1413,7 @@ void setup() {
   softAttachPair(SOFT_BURSTS);
   softAttach(sBase, PIN_BASE, SOFT_BURSTS_BASE);
   writePose(ZERO_POSE);
+  if (START_SWEEP) baseSweep();
 
   Serial.println(F("\nGroup 31 robotic arm: demonstration program starting."));
   if (lcd.begin()) {

@@ -1,0 +1,5 @@
+# Opens this sketch with the board and port already selected (Arduino IDE 2 / arduino-cli).
+# The port is the arm Uno on the group laptop. If Windows gives it a new COM number,
+# change it here or pick it in Tools > Port.
+default_fqbn: arduino:avr:uno
+default_port: COM8

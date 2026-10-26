@@ -11,8 +11,9 @@ Report any damaged servo or sensor to the tutors before 09:30, with photo or vid
 3. `test_sensors`. Distance, colour and sound print together. Calibrate the colours with r, g, b on your own paper and the tap levels with t. Paste the printed values into `arm_controller.ino`.
 4. Pivot height is set to 130 mm above the table (20 mm platform plus 110 mm). If the arm is rebuilt, re-measure and update `SHOULDER_HEIGHT_MM` in both `arm_controller.ino` and `test_combined.ino`.
 5. `test_combined`. The arm visits every station and prints where it thinks the sensor is.
-6. `capture_points`. With the stands in place, the arm goes to each point exactly as the demo does and waits. Nudge it onto the real point (`b`, `m`, `e` with `+`, `-`, `++`, `--`; one `+` is 1 degree, `++` is 5), type `s` to read the sensor there and `n` for the next point. At E, `t` is a test dot and `tt` a test dash; `d+`/`d-` push 1 mm deeper or shallower and `u+`/`u-` make the pusher wait 5 mm higher or lower. Tune until a dot and a dash both register on the receiver, and paste the `PRESS_TRAVEL_MM` and `PRESS_DEPTH_MM` lines it prints as well. Keep the wait at 36 mm or less, or the second arm runs out of travel. At the end it prints the `Station` lines and `IND_TRIM` with the trims filled in: paste them into `arm_controller.ino` over the lines with the same names.
+6. `capture_points`. With the stands in place, the arm goes to each point exactly as the demo does and waits. Nudge it onto the real point (`b`, `m`, `e` with `+`, `-`, `++`, `--`; one `+` is 1 degree, `++` is 5), type `s` to read the sensor there and `n` for the next point. At E, `t` is a test dot and `tt` a test dash; `d+`/`d-` push 1 mm deeper or shallower, `u+`/`u-` make the pusher wait 5 mm higher or lower and `x+`/`x-` lean the main arm 1 degree more or less at the bottom of each press. Tune until a dot and a dash both register on the receiver, and paste the `PRESS_TRAVEL_MM`, `PRESS_DEPTH_MM` and `PRESS_MAIN_EXTRA_DEG` lines it prints as well. Keep the wait at 38 mm or less, or the second arm runs out of travel. At the end it prints the `Station` lines and `IND_TRIM` with the trims filled in: paste them into `arm_controller.ino` over the lines with the same names.
 7. `arm_controller`. Full runs with conditions changed: object at A only, B only, neither; each colour; soft and loud tap; different words.
+8. `arm_controller_fine` (optional). The same program with the fine search switched on: after finding the object at A or B, and after the colour wave at C, the arm makes very small moves (2, then 1, then 0.5 degrees) left, right, up and down and keeps the spot that reads best. Try it after `arm_controller` works. Use it on the day only if it reads more reliably on your stands; each run takes about 30 s longer.
 
 ## What each point should look like
 
@@ -27,7 +28,7 @@ Joint angles from the rest position, and where the sensor in use ends up (height
 | C | 22 left | 33 forward | 41 down | Clear dip: second arm points about 75 degrees down, colour sensor tip just in front of the blue face, looking steeply down at it (see Point C below) |
 | D | 1 right | 13 forward | 11 down | Second arm tilted down, sound sensor 4 cm from the tap point |
 | Indicator | 20 right | 35 forward (quiet) to 14 forward (loud) | 13 down to 15 up | Ultrasonic 6 cm from the scale, pointing at 150 mm (quiet) up to 350 mm (loud) |
-| E | 80 right | 17 forward above, 19 forward pressing | 44 up above, 32 up pressing | Arm swung right; each press pushes the pusher tip 44 mm straight down, from 36 mm above the button to 8 mm in |
+| E | 80 right | 17 forward above, 23 forward pressing | 44 up above, 30 up pressing | Arm swung right; each press pushes the pusher tip 58 mm straight down, from 38 mm above the button to 20 mm in, with the main arm leaning 3 degrees extra at the bottom |
 
 Gestures, one per run, each a different shape. YES (object at A): the sensor moves straight up and down about 40 mm, twice. NO (object at B): the base turns 15 degrees left and right, twice. BOX (nothing at A or B): the sensor traces a square, up, across, down and back. Each swing takes 900 ms with a short stop at each end, and the Serial Monitor prints a `Gesture:` line.
 
@@ -45,7 +46,7 @@ How to set them on the day: run `test_combined` with nothing at A and B and note
 
 The arm stays still for 2 s at every point before it does anything there. Between A and B it lifts up, turns 25 degrees towards the front, then turns back and leans down to B, so the two visits are clearly separate. The arm cannot bring the sensor down level with B (150 mm) with these arm lengths, so at B it looks down at the point from 7 cm away.
 
-Each Morse press at E pushes the 70 mm pusher straight down, from 36 mm above the button to 8 mm into it, and straight back up; the main arm and second arm move together so the tip stays vertical (it drifts about 1 mm). The pusher waits 36 mm above because any higher would need the second arm past +45. Presses move at 60 degrees per second, faster than the rest of the run, so dots and dashes stay apart. The timing decodes correctly as long as the button closes within the first 7 mm of the 8 mm push.
+Each Morse press at E pushes the 70 mm pusher straight down, from 38 mm above the button to 20 mm into it, and straight back up; the main arm and second arm move together so the tip stays vertical. The pusher waits 38 mm above because 40 would put the second arm at its +45 limit. At the bottom of each press the main arm leans a further 3 degrees (`PRESS_MAIN_EXTRA_DEG`), so the two main arm servos push on the button as well as the second arm; this aims the tip about 7 mm further out, so set it to 0 if the pusher slides off the button cap. Presses move at 120 degrees per second, faster than the rest of the run, so dots and dashes stay apart. The timing decodes correctly with the button anywhere from 30 mm higher to 32 mm lower than expected.
 
 ## Point C
 
@@ -54,7 +55,7 @@ C is a flat vertical face: blue paper on the end of the stand's bar, facing back
 1. Leave the sensor as it is. Check with `capture_points` (`s` at C) that it reads the blue clearly with its own LED on, and calibrate the colours in that pose.
 2. Better: tilt the colour sensor up on the board, on a 60 to 70 degree wedge, and set `COLOUR_PITCH_DEG` to the angle. The arm pose at C hardly changes, but the sensor then looks at the face almost level, 15 mm away. The colour sensor is only used at C, so the tilt affects nothing else.
 
-Morse receiver settings, worked out from the pusher's real motion. With the button anywhere from 30 mm higher to 12 mm lower than expected, it sees dots of 520 to 800 ms, dashes of 1720 to 2000 ms, gaps of 400 to 800 ms inside a letter and 1600 to 1880 ms between letters. Both receivers split dot from dash at 1250 ms and end a letter after 1200 ms of silence, at least 400 ms from every band. A release shorter than 100 ms counts as contact bounce and a press shorter than 100 ms is ignored. `morse_receiver` ends a word after 3 s of silence; `morse_receiver_i2c` shows the word after the third letter and uses 4 s only for shorter words. Offline test: 1,536 runs (8 words, 8 button heights, contact chatter up to 90 ms) and 600 runs with every edge shifted randomly by up to 150 ms all decoded correctly.
+Morse receiver settings, worked out from the pusher's real motion. With the button anywhere from 30 mm higher to 32 mm lower than expected, it sees dots of 520 to 800 ms, dashes of 1720 to 2000 ms, gaps of 400 to 680 ms inside a letter and 1600 to 1880 ms between letters. Both receivers split dot from dash at 1250 ms and end a letter after 1200 ms of silence, at least 400 ms from every band. A release shorter than 100 ms counts as contact bounce and a press shorter than 100 ms is ignored. `morse_receiver` ends a word after 3 s of silence; `morse_receiver_i2c` shows the word after the third letter and uses 4 s only for shorter words. Offline test: 1,536 runs (8 words, 8 button heights, contact chatter up to 90 ms) and 720 runs with every edge shifted randomly by up to 150 ms all decoded correctly.
 
 ## Testing at home without the stands
 
@@ -79,6 +80,8 @@ Stack books or boxes to each height and tape a 5 x 5 cm card at A and B facing t
 
 After reset the servos creep to the rest position one at a time (second arm, main arm, then the base, slowest) instead of jumping there. This takes about 8 seconds; leave the arm alone until the LED check beeps. If the base still jumps, raise `SOFT_BURSTS_BASE`.
 
+Then the base sweep: the head lifts, the base turns slowly to its far left (85 degrees), then its far right, then the middle, and the arm returns to rest (about 30 s). The servo cannot report its position, so the sweep does not measure the middle; the middle is halfway between the two ends it was sent to, which is `SERVO_ZERO_BASE`. What the sweep does is show that the whole swing is clear of cables and stands, bed the base gear in its groove before the run, and make a wrong `SERVO_ZERO_BASE` obvious: if the arm does not face straight forward after the sweep, change it. Throughout the run the base is held to 18 degrees per second (24 while shaking NO or drawing BOX), slower than the other joints, so long swings never yank the gear.
+
 ## During the 5 minute changeover
 
 1. Place the arm on the station base and plug in the servo supply.
@@ -87,7 +90,7 @@ After reset the servos creep to the rest position one at a time (second arm, mai
 
 ## During the 10 minute slot
 
-- Press reset to start each attempt. A run takes about two and a half minutes.
+- Press reset to start each attempt. A run takes about three and a half minutes, including the 8 s soft start and the 30 s base sweep (set `START_SWEEP` to false to skip the sweep if time is short).
 - Run at least twice; the tutors change conditions between runs. The best attempt counts.
 - If one task keeps failing, set its `RUN_TASK_x` to false and upload so the other tasks still score.
 - One person films every attempt.

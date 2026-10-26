@@ -316,7 +316,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
               <tr><td>Ultrasonic HC-SR04</td><td class="m">centre, end of arm</td><td>A, B, indicator</td><td class="m">A 100, B 70, indicator 60 mm</td><td>20 mm to 4 m, 15° cone, about 3 mm steps. Reads nothing under 20 mm.</td></tr>
               <tr><td>Colour TCS34725</td><td class="m">83 out (tip), 45 right</td><td>C</td><td class="m">15 mm</td><td>Best 5 to 20 mm from the paper. Further out, room light swamps the colour.</td></tr>
               <tr><td>Sound module</td><td class="m">42 out, 45 left</td><td>D</td><td class="m">40 mm</td><td>Set by its screw pot. A tap a few cm away gives a clear peak.</td></tr>
-              <tr><td>Button pusher</td><td class="m">70 mm bar under the arm end, tip 90 below its centre line</td><td>E</td><td class="m">36 above, 12 in</td><td>Pushes straight down onto the button and back up, main arm and second arm together.</td></tr>
+              <tr><td>Button pusher</td><td class="m">70 mm bar under the arm end, tip 90 below its centre line</td><td>E</td><td class="m">38 above, 20 in</td><td>Pushes straight down onto the button and back up, main arm and second arm together; the main arm leans 3 degrees extra at the bottom so its servos push too.</td></tr>
             </tbody>
           </table>
         </div>
@@ -329,7 +329,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     <div class="panel"><h2>2. Main arm</h2><svg id="pMain" viewBox="0 0 420 300" role="img" aria-label="Main arm side face with dimensions"></svg><p class="cap">Side face 50 mm wide, 225 mm pivot to pivot. Driven at the bottom by two servos facing each other, left D3 and right D4, which always turn in opposite directions. 0 = upright, +50 forward, -15 back.</p></div>
     <div class="panel"><h2>3. Second arm</h2><svg id="pSecond" viewBox="0 0 420 300" role="img" aria-label="Second arm side face with dimensions"></svg><p class="cap">Open frame, side face 40 mm wide, 160 mm from its pivot to the end. Servo D5 at the pivot. 0 = level, +45 up, -90 down.</p></div>
     <div class="panel"><h2>4. Sensor array (from above)</h2><svg id="pArray" viewBox="0 0 420 300" role="img" aria-label="Sensor array seen from above with offsets"></svg><p class="cap">Runs along the axis of the second arm from its end. Ultrasonic on the crossbar at the centre, sound sensor on your left leg, colour sensor at the tip of your right leg (you standing in front of the machine).</p></div>
-    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">70 mm bar fixed under the sensor array at the end of the second arm, square to the arm. At Point E the tip moves straight down, from 36 mm above the button to 12 mm into it, and straight back up.</p></div>
+    <div class="panel"><h2>5. Button pusher</h2><svg id="pPusher" viewBox="0 0 420 300" role="img" aria-label="Button pusher under the arm end"></svg><p class="cap">70 mm bar fixed under the sensor array at the end of the second arm, square to the arm. At Point E the tip moves straight down, from 38 mm above the button to 20 mm into it, and straight back up.</p></div>
     <div class="panel"><h2>6. Assembled at zero</h2><svg id="pAll" viewBox="0 0 420 300" role="img" aria-label="Whole arm at the zero pose with key heights"></svg><p class="cap">Base forward, main arm upright, second arm level. Heights from the table.</p></div>
   </section>
 
@@ -384,7 +384,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     E:      { name: 'E',       theta: 170, r: 250, z: 300, s: 0,   tool: TOOLS.PUSH }
   };
   // Point E: presses go straight down onto the button (buttonPoint() in arm_controller.ino)
-  var PRESS_TRAVEL = 36, PRESS_DEPTH = 12;
+  var PRESS_TRAVEL = 38, PRESS_DEPTH = 20, PRESS_MAIN_EXTRA = 3;
   function buttonPoint(d, name) { return { name: name, theta: ST.E.theta, r: ST.E.r, z: ST.E.z + d, s: 0, tool: TOOLS.PUSH }; }
   ST.EH = buttonPoint(PRESS_TRAVEL, 'E hover');
   ST.EP = buttonPoint(-PRESS_DEPTH, 'E press');
@@ -825,10 +825,11 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     });
   }
   var MAX_SPEED = 30;   // deg/s, same as MAX_SPEED_DEG_S in the sketches
+  var BASE_SPEED = 18, GEST_BASE_SPEED = 24, baseCap = BASE_SPEED;   // the base is held slower (BASE_SPEED_DEG_S)
   function moveTo(p, ms, id, topSpeed) {
-    var start = cur.slice(), far = 0;
-    for (var q = 0; q < 3; q++) far = Math.max(far, Math.abs(p[q] - start[q]));
-    var dur = Math.max(ms, far * 1571 / (topSpeed || MAX_SPEED)) / speed, t0 = performance.now();
+    var start = cur.slice(), longest = 0, top = topSpeed || MAX_SPEED;
+    for (var q = 0; q < 3; q++) longest = Math.max(longest, Math.abs(p[q] - start[q]) * 1571 / (q === 0 ? Math.min(top, baseCap) : top));
+    var dur = Math.max(ms, longest) / speed, t0 = performance.now();
     return new Promise(function (res, rej) {
       function step(now) {
         if (id !== runId) return rej(new Stop());
@@ -884,7 +885,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     return p;
   }
   function baseCentre() { return clamp(cur[0], MIN[0] + GEST + 3, MAX[0] - GEST - 3); }
-  async function gStep(p, ms, id) { await moveTo(p, ms, id); await sleep(GEST_PAUSE, id); }
+  async function gStep(p, ms, id) { baseCap = GEST_BASE_SPEED; try { await moveTo(p, ms, id); } finally { baseCap = BASE_SPEED; } await sleep(GEST_PAUSE, id); }
   async function gestureYes(st, id) {
     log('Gesture: YES, nodding (sensor moves straight up and down twice).');
     var home = cur.slice(), up = shiftedPose(st, GEST_UP, cur[0]), dn = shiftedPose(st, -GEST_UP, cur[0]);
@@ -935,6 +936,12 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     log('LED check done. Each LED should have lit alone, in the order red, green, blue, with a beep each.');
     await moveTo(ZERO, 600, id);
     setTarget(null);
+    log('Base sweep: head up, then turning slowly to the far left, the far right and the middle.');
+    await moveTo([0, 0, 30], 1200, id); await sleep(500, id);
+    await moveTo([85, 0, 30], 1500, id); await sleep(500, id);
+    await moveTo([-85, 0, 30], 1500, id); await sleep(500, id);
+    await moveTo([0, 0, 30], 1500, id); await moveTo(ZERO, 1200, id);
+    log('Base sweep done. The base is now in the middle of its two ends. If it is not facing straight forward, change SERVO_ZERO_BASE.');
     posLine('zero');
     log('Holding the rest position for 5 seconds: base facing forward, main arm upright, second arm level.');
     log('The Morse word for Point E is ' + word + '. To change it, type a new 3-letter word now and press Enter.');
@@ -1001,6 +1008,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
     await runTask(4, async function () {
       log(''); log('TASK 4 of 4: pressing the word in Morse code on the button at Point E.', 'h');
       var prs = stationPose(ST.EP), hov = stationPose(ST.EH), ramp = PRESS_MOVE;
+      prs[1] = clamp(prs[1] + PRESS_MAIN_EXTRA, MIN[1], MAX[1]);
       setTarget(ST.E, 'E button');
       await goToPose(hov, 'E hover', id);
       log('Each press pushes the pusher tip ' + (PRESS_TRAVEL + PRESS_DEPTH) + ' mm straight down, ending ' + PRESS_DEPTH + ' mm into the button.');
@@ -1128,6 +1136,7 @@ td.m { font-family: var(--mono); white-space: nowrap; }
       await goToStation(k, id); await sleep(1000, id);
     }
     var prs = stationPose(ST.EP), hov = stationPose(ST.EH), rp;
+    prs[1] = clamp(prs[1] + PRESS_MAIN_EXTRA, MIN[1], MAX[1]);
     setTarget(ST.E, 'E button');
     await goToPose(hov, 'E hover', id);
     log('Each press pushes the pusher tip straight down onto the button and back up.');
