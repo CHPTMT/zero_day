@@ -170,8 +170,8 @@ const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false, 0};  // 42 mm out, 4
 const float COLOUR_PITCH_DEG = 0;
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false, COLOUR_PITCH_DEG};  // 83 mm out (the tip), 45 mm to your right
 const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true, 0};  // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
-// Pusher note: if a pose ever needs the second arm past +45 at Point E, the
-// arm holds +45 and sets the pusher height instead (see pressAtLimit).
+// Pusher note: the pusher waits 38 mm above the button so the second arm
+// stays under its +45 limit; past it, the arm stops at the limit with a warning.
 
 // Sensor ranges used for the standoffs below
 //   HC-SR04 ultrasonic: 20 mm to 4 m, about 3 mm resolution, 15 deg cone.
@@ -583,39 +583,12 @@ bool toolIK(const Station &s, Pose &out) {
   return true;
 }
 
-// Lean only the main arm until the pusher tip is at height wantZ (mm above
-// the table). The tip drops as the main arm leans forward.
-void setTipHeight(Pose &p, float wantZ) {
-  float lo = REL_MIN[J_MAIN], hi = REL_MAX[J_MAIN], th, r, z;
-  for (uint8_t it = 0; it < 30; it++) {
-    p.a[J_MAIN] = (lo + hi) / 2;
-    toolPoint(p, TOOL_PUSHER, th, r, z);
-    if (z > wantZ) lo = p.a[J_MAIN]; else hi = p.a[J_MAIN];
-  }
-}
-
-// Point E fallback. If pressing needs the second arm past its limit, hold
-// the second arm at the limit and move only the main arm until the pusher
-// tip is at the right height (button top + gap). The tip then lands a little
-// short of the button centre instead of pressing early or not at all.
-bool pressAtLimit(const Station &s, Pose &out) {
-  out.a[J_ELBOW] = REL_MAX[J_ELBOW];
-  setTipHeight(out, s.z + s.standoff);     // pusher points straight down near the limit
-  float th, r, z;
-  toolPoint(out, *s.tool, th, r, z);
-  Serial.print(F("Note: ")); Serial.print(s.name);
-  Serial.print(F(" needs the second arm past its limit, so it is held at the limit. The pusher will land "));
-  Serial.print(s.r - r, 0); Serial.println(F(" mm short of the button centre."));
-  return true;
-}
-
 // Station pose with trims. Prints a warning and clamps if a limit is hit.
 bool stationPose(const Station &s, Pose &out) {
   if (!toolIK(s, out)) {
     Serial.print(F("WARNING: ")); Serial.print(s.name); Serial.println(F(" is out of the arm's reach. Skipping this move."));
     return false;
   }
-  if (s.tool->pressDown && out.a[J_ELBOW] > REL_MAX[J_ELBOW]) pressAtLimit(s, out);
   for (uint8_t j = 0; j < NJ; j++) {
     out.a[j] += s.trim[j];
     if (out.a[j] < REL_MIN[j] || out.a[j] > REL_MAX[j]) {
@@ -896,7 +869,7 @@ float usScore() {
 float fineDistance(float d, float lo, float hi) {
   if (!inWindow(d, lo, hi)) return d;
   Pose home = cur;
-  Serial.println(F("Fine search: very small moves left, right, up and down to find the steadiest echo."));
+  Serial.println(F("Fine search: tiny moves left, right, up and down for the steadiest echo."));
   moveTo(scanHit, FINE_MOVE_MS);
   usLo = lo; usHi = hi;
   fineSearch(usScore);
@@ -924,23 +897,13 @@ float dist2(const float a[3], const float b[3]) {
   return s;
 }
 
-// Strongest raw channel. Shown next to the calibrated result as a cross check.
+// Strongest raw channel, used when the reading is too dark to classify.
 char primaryColour(uint32_t r, uint32_t g, uint32_t b) {
   if (r >= g && r >= b) return 'R';
   return g >= b ? 'G' : 'B';
 }
 
 const __FlashStringHelper *colourName(char c);
-
-// Colour temperature (K), light level (lux) and strongest channel.
-void printColourExtras(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
-  uint16_t temp = tcs.calculateColorTemperature_dn40(r, g, b, c);
-  uint16_t lux = tcs.calculateLux(r, g, b);
-  Serial.print(F("Colour temperature ")); Serial.print(temp);
-  Serial.print(F(" K, light level ")); Serial.print(lux);
-  Serial.print(F(" lux, strongest colour channel: ")); Serial.print(colourName(primaryColour(r, g, b)));
-  Serial.println('.');
-}
 
 // Nearest calibrated colour. A reading too dark to trust uses the strongest channel.
 char classifyColour(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
@@ -993,7 +956,7 @@ void ledCheck() {
     delay(LED_CHECK_MS);
   }
   setColourLed('-');
-  Serial.println(F("LED check done. Each LED should have lit alone, in the order red, green, blue, with a beep each."));
+  Serial.println(F("LED check done: red, green, blue, each alone with a beep."));
 }
 
 // Waves the sensor over the target (centre, left, right, up, down), lights
@@ -1021,7 +984,7 @@ char scanColour() {
     if (s > best) { best = s; r = rr; g = gg; b = bb; c = cc; bestPose = p; }
   }
   if (FINE_SEARCH) {
-    Serial.println(F("Fine search: very small moves around the clearest spot to make the colour stand out most."));
+    Serial.println(F("Fine search: tiny moves to find where the colour is clearest."));
     moveTo(bestPose, FINE_MOVE_MS);
     if (fineSearch(colourScore) > best) {
       readRaw(r, g, b, c);
@@ -1034,9 +997,8 @@ char scanColour() {
   Serial.print(F(", green ")); Serial.print(g);
   Serial.print(F(", blue ")); Serial.print(b);
   Serial.print(F(", overall brightness ")); Serial.print(c); Serial.println('.');
-  printColourExtras(r, g, b, c);
   if (c < COLOUR_MIN_CLEAR || sum == 0) {
-    Serial.println(F("The reading is too dark to trust, so the strongest channel decides the colour."));
+    Serial.println(F("Too dark to trust, so the strongest channel decides."));
   } else {
     Serial.print(F("Share of each colour: red ")); Serial.print((int)(r * 100 / sum));
     Serial.print(F("%, green ")); Serial.print((int)(g * 100 / sum));
@@ -1380,7 +1342,7 @@ void printSummary() {
 // ======================================================================
 // Slow sweep of the base to its far left and far right, then the middle (see START_SWEEP).
 void baseSweep() {
-  Serial.println(F("Base sweep: head up, then turning slowly to the far left, the far right and the middle."));
+  Serial.println(F("Base sweep: slowly to the far left, the far right, then the middle."));
   Pose up = {{0, TRAVEL_MAIN, TRAVEL_ELBOW}};   // head lifted clear of the stands
   moveTo(up, MOVE_MS);
   delay(500);
@@ -1391,7 +1353,7 @@ void baseSweep() {
   moveJoint(J_BASE, 0, BASE_TURN_MS);
   moveTo(ZERO_POSE, MOVE_MS);
   delay(SETTLE_MS);
-  Serial.println(F("Base sweep done. The base is now in the middle of its two ends. If it is not facing straight forward, change SERVO_ZERO_BASE."));
+  Serial.println(F("Base sweep done: base in the middle. Not facing straight forward? Change SERVO_ZERO_BASE."));
 }
 
 void setup() {
@@ -1405,7 +1367,7 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   setColourLed('-');
 
-  Serial.println(F("\nMoving gently to the rest position (about 8 seconds), then sweeping the base (about 30 seconds)."));
+  Serial.println(F("\nMoving gently to rest (8 s), then sweeping the base (30 s)."));
   // Write zero first, then let each servo creep to it: second arm, main arm,
   // then the base, slowest of all (see SOFT_BURSTS).
   writePose(ZERO_POSE);
