@@ -126,8 +126,9 @@ const int   BASE_US_MAX = 2500;
 // sends it to rest at full speed, which jerks the arm and can lift the base
 // gear out of the turntable groove. Instead each servo gets short bursts of
 // pulses with pauses in between and creeps to rest. The base goes last and
-// slowest. It takes about 4 s and runs inside the 5 s rest hold, so it adds
-// no time. Raise SOFT_BURSTS_BASE if the base still jumps.
+// slowest. It takes about 4 s and runs inside the 5 s rest hold, together
+// with the LED check, so it adds no time. Raise SOFT_BURSTS_BASE if the base
+// still jumps.
 const uint8_t  SOFT_BURSTS       = 8;     // bursts for the second arm and the main arm
 const uint8_t  SOFT_BURSTS_BASE  = 14;    // bursts for the base
 const uint8_t  SOFT_ON_MS        = 22;    // one servo frame of pulses per burst
@@ -1011,6 +1012,15 @@ float colourStrength(uint32_t r, uint32_t g, uint32_t b, uint32_t c) {
   return hi - mid;
 }
 
+// Start up check, one colour at a time with a beep, so a wrong wire or a dead
+// LED or beeper shows straight away. Runs while the servos creep to rest.
+void ledCheck(char c, const __FlashStringHelper *pin) {
+  Serial.print(F("LED check: only ")); Serial.print(colourName(c));
+  Serial.print(F(" should be lit now (")); Serial.print(pin); Serial.println(F(")."));
+  setColourLed(c);
+  beeps(1);
+}
+
 // Colour score for the fine search.
 float colourScore() {
   uint32_t r, g, b, c;
@@ -1447,14 +1457,20 @@ void setup() {
   loadWord();
 
   // The 5 s rest hold starts now. The servos creep to rest inside it (second
-  // arm, main arm, then the base, slowest of all; see SOFT_BURSTS), so the run
+  // arm, main arm, then the base, slowest of all; see SOFT_BURSTS) while the
+  // LED check lights red, green and blue in turn with a beep each, so the run
   // starts 5 s after power up.
   unsigned long holdStart = millis();
   announceHold();
   writePose(ZERO_POSE);
+  ledCheck('R', F("D8"));
   softAttach(sElbow, PIN_ELBOW, SOFT_BURSTS);
+  ledCheck('G', F("D9"));
   softAttachPair(SOFT_BURSTS);
+  ledCheck('B', F("D10"));
   softAttach(sBase, PIN_BASE, SOFT_BURSTS_BASE);
+  setColourLed('-');
+  Serial.println(F("LED check done: red, green, blue, each alone with a beep."));
   writePose(ZERO_POSE);
   if (START_SWEEP) baseSweep();
   printPosition("the rest position");
