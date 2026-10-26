@@ -57,14 +57,14 @@
  *   Fallback: set RUN_TASK_x to false to skip a task that keeps failing.
  *   Re-run: press the Uno reset button.
  *
- * Libraries: Servo, Wire and EEPROM come with the Arduino IDE. The colour sensor
- * library (Adafruit TCS34725) is bundled in the src folder, so nothing needs installing.
+ * Libraries: Servo, Wire and EEPROM come with the Arduino IDE. The colour
+ * sensor (TCS34725) is driven directly over I2C by the small driver below, so
+ * nothing needs installing and the sketch works when pasted on its own.
  */
 
 #include <Servo.h>
 #include <Wire.h>
 #include <EEPROM.h>
-#include "src/Adafruit_TCS34725.h"   // bundled in src/, nothing to install
 
 // ======================================================================
 // TASK SWITCHES
@@ -352,6 +352,62 @@ const int16_t  PRESS_EXTRA_MS = 0;
 const float    PRESS_CLOSE_AT = 0.6;
 
 // ======================================================================
+// COLOUR SENSOR DRIVER (TCS34725 on I2C, built in: no library to install)
+// ======================================================================
+// 50 ms integration time, 4x gain: the same raw red, green, blue and clear
+// numbers the Adafruit library gives.
+class ColourSensor {
+ public:
+  bool begin() {
+    Wire.begin();
+    uint8_t id = read8(0x12);                        // ID register
+    if (id != 0x44 && id != 0x4D && id != 0x10) return false;   // TCS34725, TCS34727 and clones
+    write8(0x01, ATIME);                             // integration time 50 ms
+    write8(0x0F, 0x01);                              // gain 4x
+    write8(0x00, 0x01);                              // power on
+    delay(3);
+    write8(0x00, 0x03);                              // power on, colour sensing on
+    delay(INTEGRATION_MS + 5);                       // first reading ready
+    return true;
+  }
+
+  // Clear, red, green and blue counts, then wait one integration time so the
+  // next call gets a fresh reading.
+  void getRawData(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *c) {
+    Wire.beginTransmission(ADDR);
+    Wire.write(0xA0 | 0x14);                         // auto-increment from CDATAL
+    Wire.endTransmission();
+    Wire.requestFrom(ADDR, (uint8_t)8);
+    uint16_t v[4] = {0, 0, 0, 0};
+    for (uint8_t i = 0; i < 4 && Wire.available() >= 2; i++) {
+      uint8_t lo = Wire.read();
+      v[i] = lo | ((uint16_t)Wire.read() << 8);
+    }
+    *c = v[0]; *r = v[1]; *g = v[2]; *b = v[3];
+    delay(INTEGRATION_MS + 1);
+  }
+
+ private:
+  static const uint8_t ADDR = 0x29;
+  static const uint8_t ATIME = 0xEB;                 // 256 - 21 cycles of 2.4 ms = 50 ms
+  static const uint8_t INTEGRATION_MS = 50;
+
+  void write8(uint8_t reg, uint8_t v) {
+    Wire.beginTransmission(ADDR);
+    Wire.write(0x80 | reg);
+    Wire.write(v);
+    Wire.endTransmission();
+  }
+  uint8_t read8(uint8_t reg) {
+    Wire.beginTransmission(ADDR);
+    Wire.write(0x80 | reg);
+    if (Wire.endTransmission() != 0) return 0;       // nothing answered
+    Wire.requestFrom(ADDR, (uint8_t)1);
+    return Wire.available() ? Wire.read() : 0;
+  }
+};
+
+// ======================================================================
 // GLOBALS
 // ======================================================================
 Servo sBase, sLeft, sRight, sElbow;
@@ -360,7 +416,7 @@ Pose cur = {{0, 0, 0}};
 const Pose ZERO_POSE = {{0, 0, 0}};
 float baseSpeedCap = BASE_SPEED_DEG_S;   // gestures raise it while they run
 
-Adafruit_TCS34725 tcs(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
+ColourSensor tcs;
 bool tcsOk = false;
 char targetWord[4];
 
