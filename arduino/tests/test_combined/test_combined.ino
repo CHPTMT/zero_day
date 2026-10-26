@@ -35,7 +35,7 @@ const int8_t BASE_DIR = 1, MAIN_DIR = -1, ELBOW_DIR = 1;   // MAIN_DIR -1: same 
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
-const float REL_MAX[NJ] = { 90,  50,  45};
+const float REL_MAX[NJ] = { 90,  50,  60};   // same as arm_controller.ino
 
 // ---------------- dimensions (mm) ----------------
 const float SHOULDER_HEIGHT_MM = 130, LINK1_MM = 225, LINK2_MM = 160;
@@ -74,7 +74,7 @@ Station ST_IND_LO  = {"the volume indicator (quiet end)", 110, 275, 150,  60, {0
 Station ST_IND_MID = {"the volume indicator (middle)", 110, 275, 250,  60, {0, 0, 0}, &TOOL_US};
 Station ST_IND_HI  = {"the volume indicator (loud end)",110, 275, 350,  60, {0, 0, 0}, &TOOL_US};
 Station ST_E       = {"Point E (the button)",170, 250, 300,   0, {0, 0, 0}, &TOOL_PUSHER};
-const float PRESS_TRAVEL_MM   = 38;   // the pusher tip waits this far above the button (40 puts the second arm at +45)
+const float PRESS_TRAVEL_MM   = 70;   // the pusher tip waits this far above the button (85 puts the second arm at +60)
 const float PRESS_DEPTH_MM    = 20;   // and pushes this far down past contact
 const float PRESS_MAIN_EXTRA_DEG = 3; // main arm leans this much further at the bottom, so its servos push too
 
@@ -82,7 +82,7 @@ const uint16_t MOVE_MS = 1200, BASE_TURN_MS = 1500, SETTLE_MS = 400;
 const uint16_t POINT_HOLD_MS = 2000;   // stays still at each point, same as arm_controller.ino
 const uint8_t STEP_MS = 20;
 const float MAX_SPEED_DEG_S = 30;      // same as arm_controller.ino
-const float PRESS_SPEED_DEG_S = 120, PRESS_CLOSE_AT = 0.75;   // same as arm_controller.ino
+const float PRESS_SPEED_DEG_S = 120, PRESS_CLOSE_AT = 0.6;   // same as arm_controller.ino
 const float LIFT_TURN_DEG = 25;
 const float GESTURE_UP_MM = 70;          // same as arm_controller.ino
 const float GESTURE_DEG = 15;

@@ -26,9 +26,9 @@ Main arm 225 mm, second arm 160 mm to the sensor board, main arm pivot 130 mm ab
 |---|---|---|
 | Base (D2) | facing forward | +90 (left, towards A and B) to -90 (right, towards E) |
 | Main arm (D3 left, D4 right, mirrored) | upright | -15 (back) to +50 (forward) |
-| Second arm (D5) | level with the ground | -90 (down) to +45 (up) |
+| Second arm (D5) | level with the ground | -90 (down) to +60 (up) |
 
-The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A, 70 mm from B and 60 mm from the volume indicator, colour sensor 15 mm from the blue face at C, sound sensor 40 mm from D. At E each press pushes the 70 mm pusher straight down, from 38 mm above the button to 20 mm into it, with the main arm leaning 3 degrees extra at the bottom so its two servos push too.
+The controller works out the joint angles for each station from these dimensions and the coordinates in the brief, aiming whichever sensor each task needs at its target with a set gap: ultrasonic 100 mm from A, 70 mm from B and 60 mm from the volume indicator, colour sensor 15 mm from the blue face at C, sound sensor 40 mm from D. At E each press pushes the 70 mm pusher straight down, from 70 mm above the button to 20 mm into it, with the main arm leaning 3 degrees extra at the bottom so its two servos push too.
 
 ## Stations (theta deg, R mm, Z mm)
 
@@ -45,7 +45,7 @@ The controller works out the joint angles for each station from these dimensions
 
 `arm_controller` is a switch-case state machine: START, TASK1 to TASK4, FINISH, IDLE. Every sensor read has a timeout (ultrasonic 25 ms per ping, sound 3 s) and a safe default, so a bad reading never stops the run. Each task can be turned off with `RUN_TASK_x` as a fallback.
 
-The Morse timing uses a 600 ms unit: a dot is 600 ms, a dash 1800 ms, 600 ms between the presses of a letter and 1800 ms between letters. Each press drives the pusher straight down 20 mm past the button at 120 deg/s. Both receivers split dots from dashes at 1250 ms, end a letter after 1200 ms of silence and merge contact bounce shorter than 100 ms: `morse_receiver` (the repo version) and `morse_receiver_i2c` (the team's version, `DOT_MAX` 1250, `LETTER_GAP` 1200, `WORD_TIMEOUT` 4000). A simulation of the pusher's motion, fed into both receiver sketches, decodes every test word with the button anywhere from 30 mm higher to 32 mm lower than expected.
+The Morse timing uses a 600 ms unit: a dot is 600 ms, a dash 1800 ms, 600 ms between the presses of a letter and 1800 ms between letters. Each press drives the pusher straight down 20 mm past the button at 120 deg/s. Both receivers split dots from dashes at 1250 ms, end a letter after 1200 ms of silence and merge contact bounce shorter than 100 ms: `morse_receiver` (the repo version) and `morse_receiver_i2c` (the team's version, `DOT_MAX` 1250, `LETTER_GAP` 1200, `WORD_TIMEOUT` 4000). A simulation of the pusher's motion, fed into both receiver sketches, decodes every test word with the button anywhere from 50 mm higher to 32 mm lower than expected.
 
 `arm_controller_fine` is the same program with `FINE_SEARCH` on: after finding the object at A or B, and after the colour wave at C, the arm makes very small moves left, right, up and down and keeps the spot that reads best. Try it as an experiment next to `arm_controller`.
 

@@ -29,7 +29,7 @@
  *               Driven by two servos facing each other (left D3, right D4),
  *               always moved in opposite directions.
  *     2nd arm   0 = level with the ground when the main arm is upright,
- *               + = up (max +45), - = down (max -90)
+ *               + = up (max +60), - = down (max -90)
  *   SERVO_ZERO_xxx holds the raw servo value that equals relative 0.
  *   If a joint moves the wrong way, flip its xxx_DIR from 1 to -1.
  *
@@ -132,7 +132,7 @@ const int8_t ELBOW_DIR = 1;
 // Relative limits in degrees
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
-const float REL_MAX[NJ] = { 90,  50,  45};
+const float REL_MAX[NJ] = { 90,  50,  60};   // second arm +60 lets the pusher wait 70 mm above the button
 const char *JOINT_NAMES[NJ] = {"base", "main arm", "second arm"};
 
 // ======================================================================
@@ -170,8 +170,8 @@ const Tool TOOL_SOUND  = {"sound",      42,  0, -45, false, 0};  // 42 mm out, 4
 const float COLOUR_PITCH_DEG = 0;
 const Tool TOOL_RGB    = {"colour",     83,  0,  45, false, COLOUR_PITCH_DEG};  // 83 mm out (the tip), 45 mm to your right
 const Tool TOOL_PUSHER = {"pusher",      0, 90,   0, true, 0};  // 70 mm bar under the arm end: tip 20 + 70 = 90 mm below the arm's centre line
-// Pusher note: the pusher waits 38 mm above the button so the second arm
-// stays under its +45 limit; past it, the arm stops at the limit with a warning.
+// Pusher note: the pusher waits 70 mm above the button, which tilts the second
+// arm up to 55 degrees. Check the head clears the main arm and its cables there.
 
 // Sensor ranges used for the standoffs below
 //   HC-SR04 ultrasonic: 20 mm to 4 m, about 3 mm resolution, 15 deg cone.
@@ -229,13 +229,14 @@ const float    TRAVEL_ELBOW = 30;            // head up while turning: keeps the
                                              // the button while the base swings to and from Point E
 const float    LIFT_TURN_DEG = 25;           // between A and B the base turns this far towards the front and back
 
-// Gestures, each a different shape so they cannot be confused:
-//   YES  the sensor goes straight up and down (vertical line), 2 nods
+// Gestures, each a different shape so they cannot be confused. They are set
+// as joint angles, so they are always full size:
+//   YES  the second arm nods the head up and down (vertical line), 2 nods
 //   NO   the base turns left and right (horizontal line), 2 shakes
-//   BOX  the sensor traces a square, up/down and left/right together
-const float    GESTURE_UP_MM   = 70;    // YES and BOX: aim this far above and below the point (sensor moves about 40 mm)
-const float    GESTURE_DEG     = 15;    // NO and BOX: base turns this far each way
-const float    BOX_LIFT_MM     = 60;    // BOX is drawn this far above B, so its bottom stays clear of the main arm limit
+//   BOX  the head traces a square: base left and right, second arm up and down
+const float    GESTURE_NOD_DEG = 20;    // YES: second arm tilts this far up and down (head moves about 140 mm)
+const float    GESTURE_DEG     = 25;    // NO and BOX: base turns this far each way (50 degree swing)
+const float    BOX_HEIGHT_DEG  = 40;    // BOX: second arm rises this far from B's pose, so the square stays above B
 const uint8_t  GESTURE_REPEATS = 2;     // nods / shakes
 const uint16_t GESTURE_STEP_MS = 720;   // time for each half swing (20% quicker than before)
 const uint16_t GESTURE_PAUSE_MS = 320;  // short stop at each end of a swing, so the shape reads clearly
@@ -243,12 +244,12 @@ const float    GESTURE_SPEED_DEG_S = 36;   // gestures run 20% faster than ordin
 
 // Point E press. Each press drives the pusher tip straight down, from
 // PRESS_TRAVEL_MM above the button to PRESS_DEPTH_MM into it, and straight
-// back up, fast and firm: a 58 mm stroke. The main arm and second arm move
+// back up, fast and firm: a 90 mm stroke, 70 mm of it in clear view. The main arm and second arm move
 // together to keep it vertical. Aiming 20 mm past contact (plus the extra
 // lean below) keeps the servos pushing hard for the whole hold, and still
 // presses with the button anywhere from 30 mm higher to 32 mm lower than expected.
 const float    PRESS_SPEED_DEG_S  = 120;
-const float PRESS_TRAVEL_MM   = 38;   // the pusher tip waits this far above the button (40 puts the second arm at its +45 limit)
+const float PRESS_TRAVEL_MM   = 70;   // the pusher tip waits this far above the button (85 puts the second arm at its +60 limit)
 const float PRESS_DEPTH_MM    = 20;   // and pushes this far down past contact
 // Extra lean. With two joints and a fixed button the main arm angle at the
 // press is set by the geometry, and a straight down press is almost all
@@ -323,11 +324,11 @@ const float    SOUND_RISE_DEG_S = 15;     // the arm rises up the scale slowly, 
 const uint16_t MORSE_UNIT_MS  = 600;   // dot 600 ms, dash 1800 ms
 const uint16_t PRESS_MOVE_MS  = 200;   // shortest move onto and off the button
 const int16_t  PRESS_EXTRA_MS = 0;
-// The button only closes in the last part of each push (20 mm of 58), late in
+// The button only closes in the last part of each push (20 mm of 90), late in
 // each eased move. The press the receiver sees is the hold plus
 // the end of the move down and the start of the move up; the gap is the pause
 // plus the rest of both moves. Holds and pauses are cut by those amounts.
-const float    PRESS_CLOSE_AT = 0.75;
+const float    PRESS_CLOSE_AT = 0.6;
 
 // ======================================================================
 // GLOBALS
@@ -671,20 +672,8 @@ void goToStation(const Station &s) {
 // ======================================================================
 // GESTURES
 // ======================================================================
-// Pose that puts the station's sensor dz mm above (or below, if negative) its
-// usual spot, still aimed the same way, with the base at baseRel.
-bool shiftedPose(const Station &s, float dz, float baseRel, Pose &out) {
-  Station t = s;
-  t.z += dz;
-  if (!toolIK(t, out)) return false;
-  for (uint8_t j = 0; j < NJ; j++) out.a[j] += s.trim[j];
-  out.a[J_BASE] = baseRel;
-  for (uint8_t j = 0; j < NJ; j++) out.a[j] = constrain(out.a[j], REL_MIN[j], REL_MAX[j]);
-  return true;
-}
-
 // Middle of the base swing, moved in from a limit so both ends are reachable
-// (at A and B the base is 80 left, so NO swings about 72).
+// (at A and B the base is 80 left, so NO and BOX swing about 62).
 float baseCentre() {
   return constrain(cur.a[J_BASE], REL_MIN[J_BASE] + GESTURE_DEG + 3, REL_MAX[J_BASE] - GESTURE_DEG - 3);   // 3 deg clear of the servo end stop
 }
@@ -697,10 +686,14 @@ void gestureStep(const Pose &p, uint16_t ms) {
   delay(GESTURE_PAUSE_MS);
 }
 
-void gestureYes(const Station &s) {   // vertical line: sensor up and down
-  Serial.println(F("Gesture: YES, nodding (sensor moves straight up and down twice)."));
-  Pose home = cur, up, down;
-  if (!shiftedPose(s, GESTURE_UP_MM, cur.a[J_BASE], up) || !shiftedPose(s, -GESTURE_UP_MM, cur.a[J_BASE], down)) return;
+// Second arm angle a little inside its limits.
+float elbowIn(float e) { return constrain(e, REL_MIN[J_ELBOW] + 2, REL_MAX[J_ELBOW] - 2); }
+
+void gestureYes() {   // vertical line: head nods up and down
+  Serial.println(F("Gesture: YES, nodding (the head moves up and down twice)."));
+  Pose home = cur, up = cur, down = cur;
+  up.a[J_ELBOW] = elbowIn(cur.a[J_ELBOW] + GESTURE_NOD_DEG);
+  down.a[J_ELBOW] = elbowIn(cur.a[J_ELBOW] - GESTURE_NOD_DEG);
   for (uint8_t i = 0; i < GESTURE_REPEATS; i++) {
     gestureStep(up, GESTURE_STEP_MS);
     gestureStep(down, GESTURE_STEP_MS);
@@ -721,13 +714,16 @@ void gestureNo() {    // horizontal line: base left and right
   gestureStep(home, GESTURE_STEP_MS);
 }
 
-void gestureBox(const Station &s) {   // square: up/down and left/right
-  Serial.println(F("Gesture: BOX, nothing at A or B (sensor traces a square: up, across, down, back)."));
+void gestureBox() {   // square: base left/right, second arm up/down, all above B
+  Serial.println(F("Gesture: BOX, nothing at A or B (the head traces a square: up, across, down, back)."));
   Pose home = cur, corner[4];
-  float c = baseCentre();
-  const int8_t k[4][2] = {{1, 1}, {-1, 1}, {-1, -1}, {1, -1}};   // {left/right, up/down}
-  for (uint8_t i = 0; i < 4; i++)
-    if (!shiftedPose(s, BOX_LIFT_MM + k[i][1] * GESTURE_UP_MM, c + k[i][0] * GESTURE_DEG, corner[i])) return;
+  float c = baseCentre(), lo = elbowIn(cur.a[J_ELBOW]), hi = elbowIn(cur.a[J_ELBOW] + BOX_HEIGHT_DEG);
+  const int8_t k[4][2] = {{1, 1}, {-1, 1}, {-1, 0}, {1, 0}};   // {left/right, top/bottom}
+  for (uint8_t i = 0; i < 4; i++) {
+    corner[i] = cur;
+    corner[i].a[J_BASE] = c + k[i][0] * GESTURE_DEG;
+    corner[i].a[J_ELBOW] = k[i][1] ? hi : lo;
+  }
   for (uint8_t i = 0; i < 4; i++) gestureStep(corner[i], GESTURE_STEP_MS * 2);
   gestureStep(corner[0], GESTURE_STEP_MS * 2);   // close the square
   gestureStep(home, GESTURE_STEP_MS * 2);
@@ -1209,7 +1205,7 @@ void task1() {
   printDistance(F("Point A"), distA, resultA, US_A_MIN_CM, US_A_MAX_CM);
   lcdRow(1);
   lcdDist(0, 1, 'A', distA);
-  if (resultA) { lcdRow(0); lcd.print(F("A found: YES")); gestureYes(ST_A); }
+  if (resultA) { lcdRow(0); lcd.print(F("A found: YES")); gestureYes(); }
 
   liftClear();   // A and B are above each other, so make B a visibly separate visit
   Serial.println(F("Going down to Point B, the lower point."));
@@ -1222,7 +1218,7 @@ void task1() {
   lcdDist(8, 1, 'B', distB);
   if (resultB) { lcdRow(0); lcd.print(F("B found: NO")); gestureNo(); }
 
-  if (!resultA && !resultB) { lcdRow(0); lcd.print(F("None found: BOX")); gestureBox(ST_B); }
+  if (!resultA && !resultB) { lcdRow(0); lcd.print(F("None found: BOX")); gestureBox(); }
   lcdRow(0); lcd.print(F("T1 done: ")); lcd.print(gestureName());
 }
 

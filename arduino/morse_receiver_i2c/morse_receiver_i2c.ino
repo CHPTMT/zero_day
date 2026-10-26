@@ -6,11 +6,12 @@
 
   Timing matches arm_controller.ino: dot 600 ms, dash 1800 ms, 600 ms
   between the presses of a letter, 1800 ms between letters, then at least
-  3.6 s of silence. Each press drives the pusher straight down fast and
-  20 mm past the button (58 mm stroke), so the button sees dots 520 to 800 ms, dashes 1720
-  to 2000 ms, gaps inside a letter 400 to 680 ms and gaps between letters
-  1600 to 1880 ms, for a button anywhere from 30 mm higher to 32 mm lower
-  than expected. The thresholds below sit midway, at least 400 ms from each band.
+  3.6 s of silence. Each press drives the pusher straight down fast, from
+  70 mm above the button to 20 mm past it, so the button sees dots 400 to
+  800 ms, dashes 1600 to 2000 ms, gaps inside a letter 390 to 790 ms and gaps
+  between letters 1590 to 1990 ms, for a button anywhere from 50 mm higher
+  to 32 mm lower than expected. The thresholds below sit midway, at least
+  350 ms from each band.
 
   A pusher arriving fast can make the contact chatter. A release shorter
   than BOUNCE_GAP counts as the same press, and a press shorter than
@@ -28,8 +29,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);   // if blank, try address 0x3F
 const unsigned long DEBOUNCE     = 20;    // contact must be steady this long
 const unsigned long BOUNCE_GAP   = 100;   // shorter release = the same press bouncing
 const unsigned long MIN_PRESS    = 100;   // shorter press = noise
-const unsigned long DOT_MAX      = 1250;  // press shorter than this = dot, else dash (arm: dot 520-800, dash 1720-2000)
-const unsigned long LETTER_GAP   = 1200;  // release longer than this = letter finished (arm: 400-680 inside, 1600-1880 between)
+const unsigned long DOT_MAX      = 1250;  // press shorter than this = dot, else dash (arm: dot 400-800, dash 1600-2000)
+const unsigned long LETTER_GAP   = 1200;  // release longer than this = letter finished (arm: 390-790 inside, 1590-1990 between)
 const unsigned long WORD_TIMEOUT = 4000;  // silence after a letter = word finished early (only if fewer than 3 letters)
 const int WORD_LEN               = 3;
 

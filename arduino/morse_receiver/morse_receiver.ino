@@ -14,11 +14,11 @@
  * What the arm sends (arm_controller.ino): dot 600 ms, dash 1800 ms, 600 ms
  * between the presses of a letter, 1800 ms between letters, then at least
  * 3.6 s of silence after the word. Each press drives the pusher straight
- * down fast and 20 mm past the button (58 mm stroke), so the button sees:
- *   dots 520 to 800 ms, dashes 1720 to 2000 ms,
- *   gaps inside a letter 400 to 680 ms, gaps between letters 1600 to 1880 ms
- * for a button anywhere from 30 mm higher to 32 mm lower than expected.
- * The split points sit between those bands with at least 400 ms to spare.
+ * down fast, from 70 mm above the button to 20 mm past it, so the button sees:
+ *   dots 400 to 800 ms, dashes 1600 to 2000 ms,
+ *   gaps inside a letter 390 to 790 ms, gaps between letters 1590 to 1990 ms
+ * for a button anywhere from 50 mm higher to 32 mm lower than expected.
+ * The split points sit between those bands with at least 350 ms to spare.
  *
  * Bounce: a pusher arriving fast can make the contact chatter for a few tens
  * of ms. A release shorter than BOUNCE_GAP_MS is treated as part of the same

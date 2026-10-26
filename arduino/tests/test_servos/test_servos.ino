@@ -8,7 +8,7 @@
  *    LEFT (towards A and B), main arm should lean FORWARD, second arm should tilt UP. If one goes
  *    the other way, flip its xxx_DIR.
  * 3. Full sweep of each joint through its whole allowed range:
- *      base -90 to +90, main arm -15 to +50, second arm -90 to +45.
+ *      base -90 to +90, main arm -15 to +50, second arm -90 to +60.
  *    The two main arm servos always move in opposite directions.
  * 4. Then manual control from the Serial Monitor (115200, Newline):
  *      b30   base to +30        m20   main arm to +20     e-40   2nd arm to -40
@@ -41,7 +41,7 @@ const int8_t BASE_DIR = 1, MAIN_DIR = -1, ELBOW_DIR = 1;   // MAIN_DIR -1: same 
 
 enum Joint : uint8_t { J_BASE = 0, J_MAIN = 1, J_ELBOW = 2, NJ = 3 };
 const float REL_MIN[NJ] = {-90, -15, -90};
-const float REL_MAX[NJ] = { 90,  50,  45};
+const float REL_MAX[NJ] = { 90,  50,  60};   // same as arm_controller.ino
 const char *NAMES[NJ] = {"base", "main arm", "second arm"};
 const char KEYS[NJ] = {'b', 'm', 'e'};
 
